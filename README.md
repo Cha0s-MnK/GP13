@@ -10,4 +10,5 @@ npz_file = np.load('result/du_1013_threshold_5_separation_100.npz', allow_pickle
 
 # use a list comprehension to filter out empty lists
 window_x = np.array([a_list for a_list in npz_file['window_x'] if len(a_list) > 0])
+print(window_x)
 ```
