@@ -146,38 +146,38 @@ def search_transients(trace,
     crossings = [] # threshold crossings
 
     # find trace positions where N sigma/STD is exceeded
-    threshold         = num_threshold * np.std(trace)
-    exceed_threshold  = np.abs(trace) > threshold
-    indices_crossings = np.nonzero(exceed_threshold)[0]
+    threshold        = num_threshold * np.std(trace)
+    exceed_threshold = np.abs(trace) > threshold
+    ids_crossings    = np.nonzero(exceed_threshold)[0]
 
     # stop if there are no transients
     if not np.any(exceed_threshold):
         return windows, crossings
 
     # find the separations between consecutive threshold crossings
-    separations_crossings = np.diff(indices_crossings)
+    separations_crossings = np.diff(ids_crossings)
 
     # locate where two transients/pulses are separated
-    indices_pulses = np.concatenate((np.nonzero(separations_crossings > standard_separation)[0], [len(indices_crossings)-1]))
+    ids_pulses = np.concatenate((np.nonzero(separations_crossings > standard_separation)[0], [len(ids_crossings)-1]))
     
     # search all transients/pulses
     half_separation = standard_separation / 2
-    for index in indices_pulses:
+    for i, id in enumerate(ids_pulses):
         # get the beginning of current pulse
-        if index == indices_pulses[0]:
-            begin_pulse = np.max([0, indices_crossings[0] - half_separation])
+        if i == 0:
+            begin_pulse = np.max([0, ids_crossings[0] - half_separation])
         else:
-            begin_pulse = end_pulse - standard_separation + separations_crossings[index-1]
+            begin_pulse = end_pulse - standard_separation + separations_crossings[ids_pulses[i - 1]]
 
         # get the end of current pulse
-        end_pulse = np.min([len(trace)-1, indices_crossings[index] + half_separation] )
+        end_pulse = np.min([len(trace)-1, ids_crossings[id] + half_separation])
 
         # count how many crossings (in units of sigma/STD) are in the time window
         abs_trace_window = np.abs(trace[int(begin_pulse) : int(end_pulse)+1])
         crossing         = [signal * num_threshold / threshold for signal in abs_trace_window if signal > threshold]
 
         # add info of current pulse to the return lists
-        windows.append([begin_pulse, end_pulse])
+        windows.append([int(begin_pulse),int(end_pulse)])
         crossings.append(list(crossing))
 
     return windows, crossings
@@ -201,7 +201,7 @@ for du in du_list:
 # loop over all files in run
 num_files = len(root_files)
 id_entry  = 0
-for i, root_file in enumerate(root_files):
+for i, root_file in enumerate(root_files[:5]):
     tadc  = rt.TADC(root_file)
     trawv = rt.TRawVoltage(root_file)
     num_entries = tadc.get_number_of_entries()
@@ -234,9 +234,15 @@ for i, root_file in enumerate(root_files):
             continue
         '''
         for channel in channels:
+            #'''
             new_windows, new_crossings = search_transients(traces[channel],
                                                            num_threshold=num_threshold,
                                                            standard_separation=standard_separation)
+            '''
+            new_windows, new_crossings = search_transients_origin(traces[channel],
+                                                                  thresh=num_threshold,
+                                                                  separation_pulses=standard_separation)
+            '''
             windows[channel][du][id_entry] = new_windows
             crossings[channel][du][id_entry] = new_crossings
         gps_time[du][id_entry] = trawv.gps_time[0]
@@ -268,3 +274,10 @@ for du in du_list:
 end_time = time.perf_counter()
 run_time = end_time - start_time
 print(f"Whole program executed in: {run_time} seconds")
+
+# read the selected NPZ file
+npz_file = np.load('result/du_1013_threshold_5_separation_100.npz', allow_pickle=True)
+
+# use a list comprehension to filter out empty lists
+windows_x = np.array([a_list for a_list in npz_file['window_x'] if len(a_list) > 0])
+print(windows_x)

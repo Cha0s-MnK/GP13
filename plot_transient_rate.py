@@ -147,45 +147,45 @@ def search_transients(trace,
     crossings: a list of crossings, each containing the values of the signal during a transient.
     '''
     # create the return lists
-    windows       = [] # time windows
-    crossings     = [] # threshold crossings
+    windows   = [] # time windows
+    crossings = [] # threshold crossings
     traces_window = [] # traces in time windows
 
     # find trace positions where N sigma/STD is exceeded
-    threshold         = num_threshold * np.std(trace)
-    exceed_threshold  = np.abs(trace) > threshold
-    indices_crossings = np.nonzero(exceed_threshold)[0]
+    threshold        = num_threshold * np.std(trace)
+    exceed_threshold = np.abs(trace) > threshold
+    ids_crossings    = np.nonzero(exceed_threshold)[0]
 
     # stop if there are no transients
     if not np.any(exceed_threshold):
         return windows, crossings, traces_window
 
     # find the separations between consecutive threshold crossings
-    separations_crossings = np.diff(indices_crossings)
+    separations_crossings = np.diff(ids_crossings)
 
     # locate where two transients/pulses are separated
-    indices_pulses = np.concatenate((np.nonzero(separations_crossings > standard_separation)[0], [len(indices_crossings)-1]))
+    ids_pulses = np.concatenate((np.nonzero(separations_crossings > standard_separation)[0], [len(ids_crossings)-1]))
     
     # search all transients/pulses
     half_separation = standard_separation / 2
-    for index in indices_pulses:
+    for i, id in enumerate(ids_pulses):
         # get the beginning of current pulse
-        if index == indices_pulses[0]:
-            begin_pulse = np.max([0, indices_crossings[0] - half_separation])
+        if i == 0:
+            begin_pulse = np.max([0, ids_crossings[0] - half_separation])
         else:
-            begin_pulse = end - standard_separation + separations_crossings[index-1]
+            begin_pulse = end_pulse - standard_separation + separations_crossings[ids_pulses[i - 1]]
 
         # get the end of current pulse
-        end = np.min([len(trace)-1, indices_crossings[index] + half_separation] )
+        end_pulse = np.min([len(trace)-1, ids_crossings[id] + half_separation])
 
         # count how many crossings (in units of sigma/STD) are in the time window
-        abs_trace_window = np.abs(trace[int(begin_pulse) : int(end)+1])
+        abs_trace_window = np.abs(trace[int(begin_pulse) : int(end_pulse)+1])
         crossing         = [signal * num_threshold / threshold for signal in abs_trace_window if signal > threshold]
 
         # add info of current pulse to the return lists
-        windows.append([begin_pulse, end])
+        windows.append([int(begin_pulse),int(end_pulse)])
         crossings.append(list(crossing))
-        traces_window.append(trace[int(begin_pulse) : int(end)+1])
+        traces_window.append(trace[int(begin_pulse) : int(end_pulse)+1])
 
     return windows, crossings, traces_window
 
