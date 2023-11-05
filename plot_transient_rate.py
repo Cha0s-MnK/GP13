@@ -1,4 +1,5 @@
 # import necessary packages
+import argparse
 from datetime import datetime, time
 import glob
 import grand.dataio.root_trees as rt # GRANDLIB
@@ -12,15 +13,66 @@ plt.rcParams['xtick.direction'] = 'in'
 plt.rcParams['ytick.direction'] = 'in'
 import os
 
+###########################
+# DEFINE PARSER ARGUMENTS #
+###########################
+
+parser = argparse.ArgumentParser(description="Search for transient in data traces and save information in NPZ files per DU.")
+
+parser.add_argument('--path_to_data_dir',
+                    dest='path_to_data_dir',
+                    default='nancay_data/',
+                    type=str,
+                    help='Specifies the path of the directory containing the ROOT files to analyse.')
+
+parser.add_argument("--file_specific",
+                    dest="file_specific",
+                    default='*.root',
+                    type=str,
+                    help="Specify which ROOT files to analyze.")
+
+parse_args = parser.parse_args()
+
+path_to_data_dir    = parse_args.path_to_data_dir
+file_specific       = parse_args.file_specific
+
+#####################################
+# GET ROOT FILES AND DU INFORMATION #
+#####################################
+
+# check if the data directory or the file list is empty
+if not os.path.exists(path_to_data_dir):
+    raise FileNotFoundError(f'Data directory not found: {path_to_data_dir}')
+root_files = sorted(glob.glob(os.path.join(path_to_data_dir, file_specific)))
+if not root_files:
+    raise ValueError("The provided file list is empty. Please ensure that you provide a non-empty list of ROOT files.")
+
+# initiate TADC tree of the file list to get basic info
+total_entries   = 0 # total number of entries across all files
+max_dus         = 0 # maximum used DUs
+id_max_dus_file = 0 # index of file that has maximum used DUs
+for i, file in enumerate(root_files):
+    tadc = rt.TADC(file)
+    tadc.get_entry(0) # get the entry from current file
+    total_entries += tadc.get_number_of_entries()
+    cur_dus = len(tadc.get_list_of_all_used_dus()) # get used DUs from current file
+    if cur_dus > max_dus:
+        max_dus         = cur_dus
+        id_max_dus_file = i
+
+# get list of used DUs
+tadc = rt.TADC(root_files[id_max_dus_file])
+du_list = tadc.get_list_of_all_used_dus()
+print('\nFiles contain data from following DUs: {}'.format(du_list))
+
 ###############################################
 # COMPUTE AND PLOT TRANSIENT RATE FOR EACH DU #
 ###############################################
 
-du_list = ['1013', '1016', '1019', '1031', '1033', '1035']
 du = du_list[0]
 
 # read the selected NPZ file
-npz_file = np.load('result/du_{}_threshold_5_separation_100.npz'.format(du), allow_pickle=True)
+npz_file = np.load('result2/du_{}_threshold_5_separation_100.npz'.format(du), allow_pickle=True)
 gps_time = npz_file['gps_time']
 windows_x = npz_file['window_x']
 windows_y = npz_file['window_y']
@@ -73,7 +125,7 @@ def plot_transient_rate(utc_times, windows, channel):
     npz_file = 'du_{}_threshold_5_separation_100.npz'.format('{}')
     plt.title('Transient Rate Evolution of DU{} in channel{}'.format(du, channel))
     plt.grid(True)
-    plt.savefig('result/transient_rate_DU{}_channel{}.png'.format(du, channel))
+    plt.savefig('result2/transient_rate_DU{}_channel{}.png'.format(du, channel))
 
 plot_transient_rate(utc_times, windows_x, 'X')
 plot_transient_rate(utc_times, windows_y, 'Y')

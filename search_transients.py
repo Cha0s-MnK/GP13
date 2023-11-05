@@ -33,7 +33,7 @@ parser = argparse.ArgumentParser(description="Search for transient in data trace
 
 parser.add_argument('--path_to_data_dir',
                     dest='path_to_data_dir',
-                    default='gp13_data/',
+                    default='nancay_data/',
                     type=str,
                     help='Specifies the path of the directory containing the ROOT files to analyse.')
 
@@ -123,7 +123,7 @@ npz_dir           = 'data/{}/{}/{}/transient_search/'.format(array, month, mode)
 npz_file_template = 'transient_search_{}_{}_{}_du_{}_thresh_{}_separ_{}.npz'.format(array, month, mode, '{}', thresh, standard_separation)
 '''
 # define the NPZ directory and file name template to store the computed PSDs
-npz_dir           = 'result/'
+npz_dir           = 'result2/'
 npz_file_template = 'du_{}_threshold_{}_separation_{}.npz'.format('{}', num_threshold, standard_separation)
 
 def search_transients(trace,
@@ -201,7 +201,7 @@ for du in du_list:
 # loop over all files in run
 num_files = len(root_files)
 id_entry  = 0
-for i, root_file in enumerate(root_files[:5]):
+for i, root_file in enumerate(root_files[:9]):
     tadc  = rt.TADC(root_file)
     trawv = rt.TRawVoltage(root_file)
     num_entries = tadc.get_number_of_entries()
@@ -238,11 +238,6 @@ for i, root_file in enumerate(root_files[:5]):
             new_windows, new_crossings = search_transients(traces[channel],
                                                            num_threshold=num_threshold,
                                                            standard_separation=standard_separation)
-            '''
-            new_windows, new_crossings = search_transients_origin(traces[channel],
-                                                                  thresh=num_threshold,
-                                                                  separation_pulses=standard_separation)
-            '''
             windows[channel][du][id_entry] = new_windows
             crossings[channel][du][id_entry] = new_crossings
         gps_time[du][id_entry] = trawv.gps_time[0]
@@ -274,10 +269,3 @@ for du in du_list:
 end_time = time.perf_counter()
 run_time = end_time - start_time
 print(f"Whole program executed in: {run_time} seconds")
-
-# read the selected NPZ file
-npz_file = np.load('result/du_1013_threshold_5_separation_100.npz', allow_pickle=True)
-
-# use a list comprehension to filter out empty lists
-windows_x = np.array([a_list for a_list in npz_file['window_x'] if len(a_list) > 0])
-print(windows_x)
