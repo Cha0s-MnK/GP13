@@ -1,24 +1,16 @@
 # import necessary packages
+from datetime import datetime, time
+import glob
+import grand.dataio.root_trees as rt # GRANDLIB
 import numpy as np
 np.set_printoptions(threshold=np.inf)
-import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
+import matplotlib.pyplot as plt
 plt.rc('font', size=10)
 plt.rcParams['mathtext.default'] = 'regular'
 plt.rcParams['xtick.direction'] = 'in'
 plt.rcParams['ytick.direction'] = 'in'
-
-# system
 import os
-import glob
-import argparse
-import datetime
-
-# scipy
-import numpy as np
-
-# grandlib
-import grand.dataio.root_trees as rt
 
 ###############################################
 # COMPUTE AND PLOT TRANSIENT RATE FOR EACH DU #
@@ -35,7 +27,6 @@ windows_y = npz_file['window_y']
 windows_z = npz_file['window_z']
 
 # convert GPS time to UTC; GPS time = UTC + 18s at present
-from datetime import datetime, time
 def gps2utc(gps_time):
     leap_seconds = 18 # number of leap seconds since Jan 6th 1980
     utc_time = datetime.utcfromtimestamp(gps_time - leap_seconds)
@@ -80,13 +71,13 @@ def plot_transient_rate(utc_times, windows, channel):
     plt.xlabel('Time (Date and Hour)')
     plt.ylabel('Number of Transients/Pulses')
     npz_file = 'du_{}_threshold_5_separation_100.npz'.format('{}')
-    plt.title('Transient Rate Evolution of DU {} in channel {}'.format(du, channel))
+    plt.title('Transient Rate Evolution of DU{} in channel{}'.format(du, channel))
     plt.grid(True)
-    plt.savefig('result/transient_rate_du{}_channel_{}.png'.format(du, channel))
+    plt.savefig('result/transient_rate_DU{}_channel{}.png'.format(du, channel))
 
-plot_transient_rate(utc_times, windows_x, 'x')
-plot_transient_rate(utc_times, windows_y, 'y')
-plot_transient_rate(utc_times, windows_z, 'z')
+plot_transient_rate(utc_times, windows_x, 'X')
+plot_transient_rate(utc_times, windows_y, 'Y')
+plot_transient_rate(utc_times, windows_z, 'Z')
 
 '''
 # use a list comprehension to filter out empty lists
