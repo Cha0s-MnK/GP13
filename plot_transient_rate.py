@@ -24,8 +24,11 @@ import grand.dataio.root_trees as rt
 # COMPUTE AND PLOT TRANSIENT RATE FOR EACH DU #
 ###############################################
 
+du_list = ['1013', '1016', '1019', '1031', '1033', '1035']
+du = du_list[0]
+
 # read the selected NPZ file
-npz_file = np.load('result/du_1013_threshold_5_separation_100.npz', allow_pickle=True)
+npz_file = np.load('result/du_{}_threshold_5_separation_100.npz'.format(du), allow_pickle=True)
 gps_time = npz_file['gps_time']
 windows_x = npz_file['window_x']
 windows_y = npz_file['window_y']
@@ -41,55 +44,49 @@ gps2utc_v = np.vectorize(gps2utc) # create a vectorized version of the convertin
 utc_times = gps2utc_v(gps_time)
 
 # compute and plot transient rate for 3 ADC channels of selected DU
-def plot_transient_rate(utc_times, windows):
+def plot_transient_rate(utc_times, windows, channel):
     # use a list comprehension to filter out empty lists and pair time with non-empty time windows
     pairs_time_window = [(time, window) for time, window in zip(utc_times, windows) if len(window) > 0 and time.year > 2020]
 
     # group time windows by hour
     dict_hour_window = {}
-    for time, window in pairs_time_window:
-        if (time.date(), time.hour) not in dict_hour_window :
-            dict_hour_window[(time.date(), time.hour)] = []
-        dict_hour_window[(time.date(), time.hour)].append(window)
-    '''
-    # merge windows in the same hour
-    for (date, hour), windows in dict_hour_window.items():
-        windows = [window for sublist in windows for window in sublist] # flatten time windows
-        dict_hour_window[(date, hour)] = windows
-    '''
+    for utc_time, windows in pairs_time_window:
+        if (utc_time.date(), utc_time.hour) not in dict_hour_window :
+            dict_hour_window[(utc_time.date(), utc_time.hour)] = []
+        dict_hour_window[(utc_time.date(), utc_time.hour)].append(windows)
+    
     # print the result
     for (date, hour), windows in dict_hour_window.items():
         print(f'({date}, {hour}): {windows}')
 
-plot_transient_rate(utc_times, windows_x)
-'''
-# create lists of dates with hours and number of windows
-date_hour = []
-num_pulses = []
-for (date, hour), windows in dict_hour_window.items():
-    if date.year > 2020: # fix data bugs
+    # create lists of dates with hours and number of transients/pulses
+    date_hour = []
+    num_pulses = []
+    for (date, hour), windows in dict_hour_window.items():
         date_hour.append(datetime.combine(date, time(hour=hour)))
+        windows = [window for entry in windows for window in entry] # merge time windows in the same time unit
         num_pulses.append(len(windows))
+    
+    # plot the data
+    fig, ax = plt.subplots()
+    ax.plot(date_hour, num_pulses)
 
-print(date_hour)
-print(num_pulses)
+    # set the date format
+    ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d %H:%M'))
 
-# plot the data
-fig, ax = plt.subplots()
-ax.plot(date_hour, num_pulses)
+    # rotate date labels automatically
+    fig.autofmt_xdate()
 
-# set the date format
-ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d %H:%M'))
+    plt.xlabel('Time (Date and Hour)')
+    plt.ylabel('Number of Transients/Pulses')
+    npz_file = 'du_{}_threshold_5_separation_100.npz'.format('{}')
+    plt.title('Transient Rate Evolution of DU {} in channel {}'.format(du, channel))
+    plt.grid(True)
+    plt.savefig('result/transient_rate_du{}_channel_{}.png'.format(du, channel))
 
-# rotate date labels automatically
-fig.autofmt_xdate()
-
-plt.xlabel('Time (Date and Hour)')
-plt.ylabel('Number of Transients/Pulses')
-plt.title('Evolution of Transient Rate')
-plt.grid(True)
-plt.savefig('result/test2.png')
-'''
+plot_transient_rate(utc_times, windows_x, 'x')
+plot_transient_rate(utc_times, windows_y, 'y')
+plot_transient_rate(utc_times, windows_z, 'z')
 
 '''
 # use a list comprehension to filter out empty lists
