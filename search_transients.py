@@ -31,14 +31,14 @@ start_time = time.perf_counter()
 
 parser = argparse.ArgumentParser(description="Search for transient in data traces and save information in NPZ files per DU.")
 
-parser.add_argument('--path_to_data_dir',
-                    dest='path_to_data_dir',
-                    default='nancay_data/',
+parser.add_argument('--data_dir',
+                    dest='data_dir',
+                    default='gp13_data/',
                     type=str,
-                    help='Specifies the path of the directory containing the ROOT files to analyse.')
+                    help='Specify path of data directory containing ROOT files to analyze.')
 
-parser.add_argument("--file_specific",
-                    dest="file_specific",
+parser.add_argument("--specific_files",
+                    dest="specific_files",
                     default='*.root',
                     type=str,
                     help="Specify which ROOT files to analyze.")
@@ -47,24 +47,24 @@ parser.add_argument('--empty_channel',
                     dest='empty_channel',
                     default=0,
                     type=int,
-                    help='Specifies which of the 4 ADC channels is not branched.')
+                    help='Specify which of the 4 ADC channels is not branched.')
 
 parser.add_argument('--num_threshold',
                     dest='num_threshold',
                     default=5,
                     type=int,
-                    help='Specifies the trigger threshold in units of sigma/STDs.')
+                    help='Specify the trigger threshold in units of sigma/STDs.')
 
 parser.add_argument('--standard_separation',
                     dest='standard_separation',
                     default=100,
                     type=int,
-                    help='Specifies the required separation between two pulses in a trace in units of sample numbers.')                    
+                    help='Specify the required separation between two pulses in a trace in units of sample numbers.')                    
 
 parse_args = parser.parse_args()
 
-path_to_data_dir    = parse_args.path_to_data_dir
-file_specific       = parse_args.file_specific
+data_dir            = parse_args.data_dir
+specific_files      = parse_args.specific_files
 empty_channel       = parse_args.empty_channel
 num_threshold       = parse_args.num_threshold
 standard_separation = parse_args.standard_separation
@@ -74,17 +74,17 @@ standard_separation = parse_args.standard_separation
 #####################################
 
 # check if the data directory or the file list is empty
-if not os.path.exists(path_to_data_dir):
-    raise FileNotFoundError(f'Data directory not found: {path_to_data_dir}')
-root_files = sorted(glob.glob(os.path.join(path_to_data_dir, file_specific)))
-if not root_files:
-    raise ValueError("The provided file list is empty. Please ensure that you provide a non-empty list of ROOT files.")
+if not os.path.exists(data_dir):
+    raise FileNotFoundError(f'\nData directory is not found: {data_dir}')
+files = sorted(glob.glob(os.path.join(data_dir, specific_files)))
+if not files:
+    raise ValueError("\nProvided specific file list is empty. Please ensure that you provide a non-empty file list.")
 
 # initiate TADC tree of the file list to get basic info
 total_entries   = 0 # total number of entries across all files
 max_dus         = 0 # maximum used DUs
 id_max_dus_file = 0 # index of file that has maximum used DUs
-for i, file in enumerate(root_files):
+for i, file in enumerate(files):
     tadc = rt.TADC(file)
     tadc.get_entry(0) # get the entry from current file
     total_entries += tadc.get_number_of_entries()
@@ -94,9 +94,9 @@ for i, file in enumerate(root_files):
         id_max_dus_file = i
 
 # get list of used DUs
-tadc = rt.TADC(root_files[id_max_dus_file])
+tadc = rt.TADC(files[id_max_dus_file])
 du_list = tadc.get_list_of_all_used_dus()
-print('\nFiles contain data from following DUs: {}'.format(du_list))
+print(f'\nROOT files contain data from following DUs: {du_list}')
 '''
 # Sometimes all four channels are enabled, but one is not branched. For GP13 it is always channel 0
 mask_channel = np.array(tadc.adc_enabled_channels_ch[0], dtype=bool)
@@ -123,8 +123,8 @@ npz_dir           = 'data/{}/{}/{}/transient_search/'.format(array, month, mode)
 npz_file_template = 'transient_search_{}_{}_{}_du_{}_thresh_{}_separ_{}.npz'.format(array, month, mode, '{}', thresh, standard_separation)
 '''
 # define the NPZ directory and file name template to store the computed PSDs
-npz_dir           = 'result2/'
-npz_file_template = 'du_{}_threshold_{}_separation_{}.npz'.format('{}', num_threshold, standard_separation)
+npz_dir           = 'result/'
+npz_file_template = 'DU{}_threshold{}_separation{}.npz'.format('{}', num_threshold, standard_separation)
 
 def search_transients(trace,
                       num_threshold=5,
@@ -199,15 +199,15 @@ for du in du_list:
     gps_time[du] = np.zeros((total_entries), dtype=int) # save GPS times
 
 # loop over all files in run
-num_files = len(root_files)
+num_files = len(files)
 id_entry  = 0
-for i, root_file in enumerate(root_files[:9]):
-    tadc  = rt.TADC(root_file)
-    trawv = rt.TRawVoltage(root_file)
+for i, file in enumerate(files):
+    tadc  = rt.TADC(file)
+    trawv = rt.TRawVoltage(file)
     num_entries = tadc.get_number_of_entries()
 
     # loop over all events in file
-    print('\n{}/{}: Looping over {} events in {}'.format(i+1, num_files, num_entries, root_file))
+    print('\n{}/{}: Looping over {} events in {}'.format(i+1, num_files, num_entries, file))
     for entry in range(num_entries):
         tadc.get_entry(entry)
         trawv.get_entry(entry)
