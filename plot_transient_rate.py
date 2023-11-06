@@ -112,11 +112,11 @@ for du in du_list:
 
     # read selected NPZ file
     npz_file = np.load(f'result/DU{du}_threshold5_separation100.npz', allow_pickle=True)
-    gps_times = npz_file['gps_time']
-    windows['X'] = npz_file['window_x']
-    windows['Y'] = npz_file['window_y']
-    windows['Z'] = npz_file['window_z']
-
+    gps_times = npz_file['gps_times']
+    for channel in channels:
+        windows[channel] = npz_file[f'window{channel}']
+  
+    # convert GPS times to UTCs
     utcs = gps2utc(gps_times)
 
     for channel in channels:

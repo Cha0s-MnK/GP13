@@ -187,16 +187,16 @@ def search_transients(trace,
 #########################################
 
 # make dictionaries so that you don't have to loop over all files each time you want to analyze a different DU
-channels  = ['x', 'y', 'z']
+channels  = ['X', 'Y', 'Z']
 traces = {channel: {} for channel in channels}
 windows = {channel: {} for channel in channels}
 crossings = {channel: {} for channel in channels}
-gps_time = {}
+gps_times = {}
 for du in du_list:
     for channel in channels:
         windows[channel][du]   = np.zeros((total_entries), dtype=object) # save time windows of traces (unit = sample number)
         crossings[channel][du] = np.zeros((total_entries), dtype=object) # save threshold crossings of transients (unit = sigma/STD)
-    gps_time[du] = np.zeros((total_entries), dtype=int) # save GPS times
+    gps_times[du] = np.zeros((total_entries), dtype=int) # save GPS times
 
 # loop over all files in run
 num_files = len(files)
@@ -240,32 +240,32 @@ for i, file in enumerate(files):
                                                            standard_separation=standard_separation)
             windows[channel][du][id_entry] = new_windows
             crossings[channel][du][id_entry] = new_crossings
-        gps_time[du][id_entry] = trawv.gps_time[0]
+        gps_times[du][id_entry] = trawv.gps_time[0]
 
         id_entry += 1
 
 for du in du_list:
     # get rid of events that are not filled because of bad quality data
-    mask_filled = np.where(windows['x'][du] != 0)
+    mask_filled = np.where(windows['X'][du] != 0)
     for channel in channels:
         windows[channel][du] = windows[channel][du][mask_filled]
         crossings[channel][du] = crossings[channel][du][mask_filled]
-    gps_time[du] = gps_time[du][mask_filled]
-
+    gps_times[du] = gps_times[du][mask_filled]
+    
     # save total power in NPZ file
     npz_file = npz_file_template.format(du)
     np.savez(f'{npz_dir}{npz_file}',
              du = du,
-             window_x = windows['x'][du],
-             window_y = windows['y'][du],
-             window_z = windows['z'][du],
-             crossing_x = crossings['x'][du],
-             crossing_y = crossings['y'][du],
-             crossing_z = crossings['z'][du],
-             gps_time = gps_time[du])
+             windowX = windows['X'][du],
+             windowY = windows['Y'][du],
+             windowZ = windows['Z'][du],
+             crossingX = crossings['X'][du],
+             crossingY = crossings['Y'][du],
+             crossingZ = crossings['Z'][du],
+             gps_times = gps_times[du])
     print(f'\nSaved NPZ file: {npz_dir}{npz_file}')
 
 # record the running time
 end_time = time.perf_counter()
 run_time = end_time - start_time
-print(f"Whole program executed in: {run_time} seconds")
+print(f"\nWhole program executed in: {run_time} seconds")
