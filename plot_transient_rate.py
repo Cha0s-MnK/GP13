@@ -1,8 +1,10 @@
 # import necessary packages
 import argparse
+from collections import defaultdict
 from datetime import datetime, time
 import glob
 import grand.dataio.root_trees as rt # GRANDLIB
+import itertools
 import numpy as np
 np.set_printoptions(threshold=np.inf)
 import matplotlib.dates as mdates
@@ -12,102 +14,79 @@ plt.rcParams['mathtext.default'] = 'regular'
 plt.rcParams['xtick.direction'] = 'in'
 plt.rcParams['ytick.direction'] = 'in'
 import os
+import time as wall_time
+start_time = wall_time.perf_counter()
 
 ###########################
 # DEFINE PARSER ARGUMENTS #
 ###########################
 
-parser = argparse.ArgumentParser(description="Search for transient in data traces and save information in NPZ files per DU.")
+parser = argparse.ArgumentParser(description="Load NPZ files and plot corresponding transient rates in 3 ADC channels.")
 
-parser.add_argument('--path_to_data_dir',
-                    dest='path_to_data_dir',
-                    default='nancay_data/',
+parser.add_argument('--data_dir',
+                    dest='data_dir',
+                    default='result/',
                     type=str,
-                    help='Specifies the path of the directory containing the ROOT files to analyse.')
+                    help='Specify the path of the directory containing the NPZ files to analyze.')
 
-parser.add_argument("--file_specific",
-                    dest="file_specific",
-                    default='*.root',
+parser.add_argument("--specific_files",
+                    dest="specific_files",
+                    default='*.npz',
                     type=str,
-                    help="Specify which ROOT files to analyze.")
+                    help="Specify which NPZ files to analyze.")
 
 parse_args = parser.parse_args()
 
-path_to_data_dir    = parse_args.path_to_data_dir
-file_specific       = parse_args.file_specific
+data_dir       = parse_args.data_dir
+specific_files = parse_args.specific_files
 
 #####################################
 # GET ROOT FILES AND DU INFORMATION #
 #####################################
 
 # check if the data directory or the file list is empty
-if not os.path.exists(path_to_data_dir):
-    raise FileNotFoundError(f'Data directory not found: {path_to_data_dir}')
-root_files = sorted(glob.glob(os.path.join(path_to_data_dir, file_specific)))
-if not root_files:
-    raise ValueError("The provided file list is empty. Please ensure that you provide a non-empty list of ROOT files.")
-
-# initiate TADC tree of the file list to get basic info
-total_entries   = 0 # total number of entries across all files
-max_dus         = 0 # maximum used DUs
-id_max_dus_file = 0 # index of file that has maximum used DUs
-for i, file in enumerate(root_files):
-    tadc = rt.TADC(file)
-    tadc.get_entry(0) # get the entry from current file
-    total_entries += tadc.get_number_of_entries()
-    cur_dus = len(tadc.get_list_of_all_used_dus()) # get used DUs from current file
-    if cur_dus > max_dus:
-        max_dus         = cur_dus
-        id_max_dus_file = i
+if not os.path.exists(data_dir):
+    raise FileNotFoundError(f'\nData directory is not found: {data_dir}')
+files = sorted(glob.glob(os.path.join(data_dir, specific_files)))
+if not files:
+    raise ValueError("\nProvided specific file list is empty. Please ensure that you provide a non-empty file list.")
 
 # get list of used DUs
-tadc = rt.TADC(root_files[id_max_dus_file])
-du_list = tadc.get_list_of_all_used_dus()
-print('\nFiles contain data from following DUs: {}'.format(du_list))
+du_list = [file[9:13] for file in files]
+print(f'\nNPZ files contain data from following DUs: {du_list}')
 
-###############################################
-# COMPUTE AND PLOT TRANSIENT RATE FOR EACH DU #
-###############################################
+################################################
+# COMPUTE AND PLOT TRANSIENT RATES FOR EACH DU #
+################################################
 
-du = du_list[0]
+def gps2utc(gps_times): # convert GPS times to UTCs; GPS time = UTC + 18s at present
+    gps2utc_v = np.vectorize(gps2utc1) # vectorize the helper function
+    return gps2utc_v(gps_times)
 
-# read the selected NPZ file
-npz_file = np.load('result2/du_{}_threshold_5_separation_100.npz'.format(du), allow_pickle=True)
-gps_time = npz_file['gps_time']
-windows_x = npz_file['window_x']
-windows_y = npz_file['window_y']
-windows_z = npz_file['window_z']
-
-# convert GPS time to UTC; GPS time = UTC + 18s at present
-def gps2utc(gps_time):
+def gps2utc1(gps_time): # a helper function to convert single GPS time to UTC
     leap_seconds = 18 # number of leap seconds since Jan 6th 1980
-    utc_time = datetime.utcfromtimestamp(gps_time - leap_seconds)
-    return utc_time
-gps2utc_v = np.vectorize(gps2utc) # create a vectorized version of the converting function
-utc_times = gps2utc_v(gps_time)
+    return datetime.utcfromtimestamp(gps_time - leap_seconds)
 
-# compute and plot transient rate for 3 ADC channels of selected DU
-def plot_transient_rate(utc_times, windows, channel):
+def plot_transient_rate(utcs, windows, channel): # compute and plot transient rate for 3 ADC channels of selected DU
     # use a list comprehension to filter out empty lists and pair time with non-empty time windows
-    pairs_time_window = [(time, window) for time, window in zip(utc_times, windows) if len(window) > 0 and time.year > 2020]
+    windows_channel = windows[channel]
+    pairs_utc_window = [(utc, window) for utc, window in zip(utcs, windows_channel) if len(window) > 0 and utc.year > 2020]
 
     # group time windows by hour
-    dict_hour_window = {}
-    for utc_time, windows in pairs_time_window:
-        if (utc_time.date(), utc_time.hour) not in dict_hour_window :
-            dict_hour_window[(utc_time.date(), utc_time.hour)] = []
-        dict_hour_window[(utc_time.date(), utc_time.hour)].append(windows)
-    
+    dict_hour_window = defaultdict(list)
+    for utc, windows in pairs_utc_window:
+        dict_hour_window[(utc.date(), utc.hour)].append(windows)
+    '''
     # print the result
     for (date, hour), windows in dict_hour_window.items():
         print(f'({date}, {hour}): {windows}')
-
+    '''
     # create lists of dates with hours and number of transients/pulses
     date_hour = []
     num_pulses = []
     for (date, hour), windows in dict_hour_window.items():
         date_hour.append(datetime.combine(date, time(hour=hour)))
-        windows = [window for entry in windows for window in entry] # merge time windows in the same time unit
+        windows = list(itertools.chain(*windows)) # merge all time windows in the same time unit
         num_pulses.append(len(windows))
     
     # plot the data
@@ -122,14 +101,31 @@ def plot_transient_rate(utc_times, windows, channel):
 
     plt.xlabel('Time (Date and Hour)')
     plt.ylabel('Number of Transients/Pulses')
-    npz_file = 'du_{}_threshold_5_separation_100.npz'.format('{}')
-    plt.title('Transient Rate Evolution of DU{} in channel{}'.format(du, channel))
+    plt.title(f'Transient Rate Evolution of DU{du} in channel{channel}')
     plt.grid(True)
-    plt.savefig('result2/transient_rate_DU{}_channel{}.png'.format(du, channel))
+    plt.savefig(f'result/transient_rate_DU{du}_channel{channel}.png')
 
-plot_transient_rate(utc_times, windows_x, 'X')
-plot_transient_rate(utc_times, windows_y, 'Y')
-plot_transient_rate(utc_times, windows_z, 'Z')
+for du in du_list:
+    # make dictionaries
+    channels  = ['X', 'Y', 'Z']
+    windows = {channel: {} for channel in channels}
+
+    # read selected NPZ file
+    npz_file = np.load(f'result/DU{du}_threshold5_separation100.npz', allow_pickle=True)
+    gps_times = npz_file['gps_time']
+    windows['X'] = npz_file['window_x']
+    windows['Y'] = npz_file['window_y']
+    windows['Z'] = npz_file['window_z']
+
+    utcs = gps2utc(gps_times)
+
+    for channel in channels:
+        plot_transient_rate(utcs, windows, channel)
+
+# record the running time
+end_time = wall_time.perf_counter()
+run_time = end_time - start_time
+print(f"\nWhole program executed in: {run_time} seconds")
 
 '''
 # use a list comprehension to filter out empty lists
