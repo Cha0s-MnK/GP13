@@ -191,11 +191,13 @@ channels  = ['X', 'Y', 'Z']
 traces = {channel: {} for channel in channels}
 windows = {channel: {} for channel in channels}
 crossings = {channel: {} for channel in channels}
+durations = {channel: {} for channel in channels}
 gps_times = {}
 for du in du_list:
     for channel in channels:
         windows[channel][du]   = np.zeros((total_entries), dtype=object) # save time windows of traces (unit = sample number)
         crossings[channel][du] = np.zeros((total_entries), dtype=object) # save threshold crossings of transients (unit = sigma/STD)
+        durations[channel][du] = np.zeros((total_entries), dtype=object) # save threshold crossings of transients (unit = sigma/STD)
     gps_times[du] = np.zeros((total_entries), dtype=int) # save GPS times
 
 # loop over all files in run
@@ -234,12 +236,12 @@ for i, file in enumerate(files):
             continue
         '''
         for channel in channels:
-            #'''
             new_windows, new_crossings = search_transients(traces[channel],
                                                            num_threshold=num_threshold,
                                                            standard_separation=standard_separation)
             windows[channel][du][id_entry] = new_windows
             crossings[channel][du][id_entry] = new_crossings
+            durations[channel][du][id_entry] = len(traces[channel]) * 2 # (ns)
         gps_times[du][id_entry] = trawv.gps_time[0]
 
         id_entry += 1
@@ -250,6 +252,7 @@ for du in du_list:
     for channel in channels:
         windows[channel][du] = windows[channel][du][mask_filled]
         crossings[channel][du] = crossings[channel][du][mask_filled]
+        durations[channel][du] = durations[channel][du][mask_filled]
     gps_times[du] = gps_times[du][mask_filled]
     
     # save total power in NPZ file
@@ -262,7 +265,10 @@ for du in du_list:
              crossingX = crossings['X'][du],
              crossingY = crossings['Y'][du],
              crossingZ = crossings['Z'][du],
-             gps_times = gps_times[du])
+             gps_times = gps_times[du],
+             durationX = durations['X'][du],
+             durationY = durations['Y'][du],
+             durationZ = durations['Z'][du])
     print(f'\nSaved NPZ file: {npz_dir}{npz_file}')
 
 # record the running time
