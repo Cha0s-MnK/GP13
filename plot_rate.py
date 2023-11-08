@@ -1,7 +1,7 @@
 # import necessary packages
 import argparse
 from collections import defaultdict
-from datetime import datetime, time
+from datetime import datetime, time, timedelta
 import glob
 import itertools
 import numpy as np
@@ -9,6 +9,8 @@ np.set_printoptions(threshold=np.inf)
 import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
 plt.rc('font', size=10)
+plt.rcParams["font.family"] = "Times New Roman"
+plt.rcParams["axes.labelsize"] = 14
 plt.rcParams['mathtext.default'] = 'regular'
 plt.rcParams['xtick.direction'] = 'in'
 plt.rcParams['ytick.direction'] = 'in'
@@ -52,13 +54,17 @@ files = sorted(glob.glob(os.path.join(data_dir, specific_files)))
 if not files:
     raise ValueError("\nProvided specific file list is empty. Please ensure that you provide a non-empty file list.")
 
-# get list of used DUs
-du_list = [file[9:13] for file in files]
-print(f'\nNPZ files contain data from following DUs: {du_list}')
-
 ################################################
 # COMPUTE AND PLOT TRANSIENT RATES FOR EACH DU #
 ################################################
+
+# parse DU, num_threshold, and standard_separation information from filename
+def get_file_info(filename):
+    filename_parts = os.path.basename(filename).split('_')
+    du = filename_parts[0][2:]
+    threshold = filename_parts[1][9:]
+    separation = filename_parts[2][10:].split('.')[0]
+    return du, threshold, separation
 
 def gps2utc(gps_times): # convert GPS times to UTCs; GPS time = UTC + 18s at present
     gps2utc_v = np.vectorize(gps2utc1) # vectorize the helper function
@@ -68,7 +74,7 @@ def gps2utc1(gps_time): # a helper function to convert single GPS time to UTC
     leap_seconds = 18 # number of leap seconds since Jan 6th 1980
     return datetime.utcfromtimestamp(gps_time - leap_seconds)
 
-def plot_transient_rate(utcs, sup_windows): # compute and plot transient rate for 3 ADC channels of selected DU
+def plot_rate(du, threshold, separation, utcs, sup_windows): # compute and plot transient rates for 3 ADC channels of selected DU
     # create a 2x2 layout for the subplots and adjust figure size as needed
     fig, axes = plt.subplots(2, 2, figsize=(15, 10))
 
@@ -100,7 +106,8 @@ def plot_transient_rate(utcs, sup_windows): # compute and plot transient rate fo
             transient_rate.append(len(windows)/total_duration*1e6) # (10^9 Hz) --> kHz
 
         # plot the data per channel
-        ax.plot(date_hour, transient_rate)
+        DunHuang_hour = [hour + timedelta(hours=8) for hour in date_hour]
+        ax.plot(DunHuang_hour, transient_rate)
         ax.xaxis.set_major_formatter(mdates.DateFormatter('%m-%d %H')) # set the date format
         ax.set_xlabel('Time by date and hour')
         ax.set_ylabel('Transient Rate / kHz')
@@ -120,13 +127,13 @@ def plot_transient_rate(utcs, sup_windows): # compute and plot transient rate fo
                    datetime(2023, 10, 28, 19, 00)], ymin=ylim[0], ymax=ylim[1], color = 'r', linestyles='dashed')
 
     # adjust the spacing between the subplots to accommodate the rotated X labels
-    plt.subplots_adjust(hspace=0.5)
+    plt.subplots_adjust(hspace=0.4)
 
     # add a main/super title for the entire figure
-    plt.suptitle(f'Transient Rate Evolution of DU{du}', fontsize=16)
+    plt.suptitle(f'Transient Rate Evolution of DU{du} with {threshold} Threshold {separation} Separation', fontsize=18)
 
     # save the figure as a PNG file
-    plt.savefig(f'result/transient_rate_DU{du}.png')
+    plt.savefig(f'result/transient_rate_DU{du}_threshold{threshold}_separation{separation}.png')
 
     # close the figure to free up memory
     plt.close(fig)
@@ -134,21 +141,19 @@ def plot_transient_rate(utcs, sup_windows): # compute and plot transient rate fo
 # make dictionaries
 channels = ['X', 'Y', 'Z']
 
-for du in du_list:
-    # make dictionaries
-    windows = {channel: {} for channel in channels}
-
-    # read selected NPZ file
-    npz_file = np.load(f'result/DU{du}_threshold5_separation100.npz', allow_pickle=True)
-    for channel in channels:
-        windows[channel] = npz_file[f'window{channel}']
+# loop through files
+for file in files:
+    # extract information
+    du, threshold, separation = get_file_info(file)
+    npz_file = np.load(file, allow_pickle=True)
+    windows = {channel: npz_file[f'window{channel}'] for channel in channels}
     gps_times = npz_file['gps_times']
-    
+
     # convert GPS times to UTCs
     utcs = gps2utc(gps_times)
 
     # plot transient rates for 3 ADC channels
-    plot_transient_rate(utcs, windows)
+    plot_rate(du, threshold, separation, utcs, windows)
 
 # record the running time
 end_time = wall_time.perf_counter()
