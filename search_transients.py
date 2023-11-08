@@ -1,18 +1,15 @@
-# system
-import os
-import glob
+# import necessary packages
 import argparse
-import datetime
-
-# scipy
+from collections import defaultdict
+from datetime import datetime, time
+import glob
+import grand.dataio.root_trees as rt # GRANDLIB
+import itertools
 import numpy as np
-
-# grandlib
-import grand.dataio.root_trees as rt
-
-# time
-import time
-start_time = time.perf_counter()
+np.set_printoptions(threshold=np.inf)
+import os
+import time as wall_time
+start_time = wall_time.perf_counter()
 
 ################################################
 # SEARCHING FOR TRANSIENTS IN GRAND DATA FILES #
@@ -33,7 +30,7 @@ parser = argparse.ArgumentParser(description="Search for transient in data trace
 
 parser.add_argument('--data_dir',
                     dest='data_dir',
-                    default='gp13_data/',
+                    default='data/',
                     type=str,
                     help='Specify path of data directory containing ROOT files to analyze.')
 
@@ -117,10 +114,6 @@ path_to_data_dir_split = path_to_data_dir.split('/')
 array = path_to_data_dir_split[4]
 month = path_to_data_dir_split[5]
 mode  = path_to_data_dir_split[6]
-
-# define the NPZ directory and file name template to store the computed PSDs
-npz_dir           = 'data/{}/{}/{}/transient_search/'.format(array, month, mode)
-npz_file_template = 'transient_search_{}_{}_{}_du_{}_thresh_{}_separ_{}.npz'.format(array, month, mode, '{}', thresh, standard_separation)
 '''
 # define the NPZ directory and file name template to store the computed PSDs
 npz_dir           = 'result/'
@@ -182,6 +175,46 @@ def search_transients(trace,
 
     return windows, crossings
 
+def search_transients_test(trace,
+                           num_threshold = 5,
+                           standard_separation = 100): 
+    # find trace positions where N sigma/STD is exceeded
+    threshold        = num_threshold * np.std(trace)
+    crossing_ids     = np.flatnonzero(np.abs(trace) > threshold)
+
+    # stop here if there are no transients
+    if crossing_ids.size == 0:
+        return np.array([]), np.array([])  
+
+    # find the separations between consecutive threshold crossings
+    separations_crossings = np.diff(crossing_ids)
+    pulse_ids             = np.flatnonzero(separations_crossings > standard_separation) # indices of pulses in indices of threshold crossings
+    pulse_ids             = np.concatenate(([-1], pulse_ids, [crossing_ids.size-1]))
+
+    # create the return lists
+    windows   = np.empty((pulse_ids.size-1, 2), dtype=int) # time windows
+    crossings = [] # threshold crossings
+
+    # search all transients/pulses
+    half_separation = standard_separation // 2
+    for i in range(pulse_ids.size-1):
+        # get the start index of current pulse
+        start_id = crossing_ids[pulse_ids[i]+1] - half_separation
+        start_id = max(0, start_id) # fix the 1st pulse
+
+        # get the stop index of current pulse
+        stop_id = crossing_ids[pulse_ids[i+1]] + half_separation
+        stop_id = min(len(trace)-1, stop_id) # fix the last pulse
+
+        windows[i, :] = [start_id, stop_id]
+
+        # count how many crossings (in units of sigma/STD) are in the time window
+        crossing = (np.abs(trace[start_id:stop_id+1]) * num_threshold) / threshold
+        crossing = crossing[crossing > num_threshold]
+        crossings.append(crossing)
+
+    return windows, np.array(crossings, dtype=object)
+
 #########################################
 # COMPUTE AND PLOT MEAN PSD FOR EACH DU #
 #########################################
@@ -191,30 +224,26 @@ channels  = ['X', 'Y', 'Z']
 traces = {channel: {} for channel in channels}
 windows = {channel: {} for channel in channels}
 crossings = {channel: {} for channel in channels}
-durations = {channel: {} for channel in channels}
 gps_times = {}
 for du in du_list:
     for channel in channels:
         windows[channel][du]   = np.zeros((total_entries), dtype=object) # save time windows of traces (unit = sample number)
         crossings[channel][du] = np.zeros((total_entries), dtype=object) # save threshold crossings of transients (unit = sigma/STD)
-        durations[channel][du] = np.zeros((total_entries), dtype=object) # save threshold crossings of transients (unit = sigma/STD)
     gps_times[du] = np.zeros((total_entries), dtype=int) # save GPS times
 
 # loop over all files in run
 num_files = len(files)
-id_entry  = 0
-for i, file in enumerate(files):
+entry_id = 0
+for file_id, file in enumerate(files):
     tadc  = rt.TADC(file)
-    trawv = rt.TRawVoltage(file)
     num_entries = tadc.get_number_of_entries()
 
     # loop over all events in file
-    print('\n{}/{}: Looping over {} events in {}'.format(i+1, num_files, num_entries, file))
+    print(f'\n{file_id+1}/{num_files}: Looping over {num_entries} events in {file}')
     for entry in range(num_entries):
         tadc.get_entry(entry)
-        trawv.get_entry(entry)
 
-        # use the DU as key for the dictionaries
+        # use DU as key for the dictionaries
         # Assume that there are no coincident events, i.e. only one DU (and trace etc) per event.
         du = tadc.du_id[0]
     
@@ -222,37 +251,23 @@ for i, file in enumerate(files):
         new_traces = np.array(tadc.trace_ch[0], dtype=object)[mask_channel]
         for channel, new_trace in zip(channels, new_traces):
             traces[channel] = new_trace
-        '''
-        # check if sample numbers are enough
-        if any(len(channel) != num_samples for channel in new_traces[:3]):
-            print('\nWARNING for entry {}: {} samples in trace != (3,{})'.format(entry, new_traces.shape, num_samples) + '\nSkipping...')
-            id_entry += 1
-            continue
-        
-        # check if data is between 10-55ºC
-        if trawv.gps_temp[0] > 55 or trawv.gps_temp[0] < 10:
-            print('\nWARNING for entry {}: gps_temp = {} not between 10 and 55 ºC'.format(entry,trawv.gps_temp[0]) + '\nSkipping...')
-            id_entry += 1
-            continue
-        '''
+
         for channel in channels:
             new_windows, new_crossings = search_transients(traces[channel],
                                                            num_threshold=num_threshold,
                                                            standard_separation=standard_separation)
-            windows[channel][du][id_entry] = new_windows
-            crossings[channel][du][id_entry] = new_crossings
-            durations[channel][du][id_entry] = len(traces[channel]) * 2 # (ns)
-        gps_times[du][id_entry] = trawv.gps_time[0]
+            windows[channel][du][entry_id] = new_windows
+            crossings[channel][du][entry_id] = new_crossings
+        gps_times[du][entry_id] = trawv.gps_time[0]
 
-        id_entry += 1
+        entry_id += 1
 
 for du in du_list:
-    # get rid of events that are not filled because of bad quality data
+    # fix data bugs
     mask_filled = np.where(windows['X'][du] != 0)
     for channel in channels:
         windows[channel][du] = windows[channel][du][mask_filled]
         crossings[channel][du] = crossings[channel][du][mask_filled]
-        durations[channel][du] = durations[channel][du][mask_filled]
     gps_times[du] = gps_times[du][mask_filled]
     
     # save total power in NPZ file
@@ -265,10 +280,7 @@ for du in du_list:
              crossingX = crossings['X'][du],
              crossingY = crossings['Y'][du],
              crossingZ = crossings['Z'][du],
-             gps_times = gps_times[du],
-             durationX = durations['X'][du],
-             durationY = durations['Y'][du],
-             durationZ = durations['Z'][du])
+             gps_times = gps_times[du])
     print(f'\nSaved NPZ file: {npz_dir}{npz_file}')
 
 # record the running time

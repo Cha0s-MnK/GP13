@@ -3,7 +3,7 @@ import argparse
 from collections import defaultdict
 from datetime import datetime, time
 import glob
-import grand.dataio.root_trees as rt # GRANDLIB
+#import grand.dataio.root_trees as rt # GRANDLIB
 import itertools
 import numpy as np
 np.set_printoptions(threshold=np.inf)
@@ -16,6 +16,8 @@ plt.rcParams['ytick.direction'] = 'in'
 import os
 import time as wall_time
 start_time = wall_time.perf_counter()
+
+DURATION = 4096 # constant; (ns)
 
 ###########################
 # DEFINE PARSER ARGUMENTS #
@@ -53,8 +55,6 @@ if not files:
 
 # get list of used DUs
 du_list = [file[9:13] for file in files]
-# only care about DU1013 and DU1016 now
-#du_list = ['1013', '1016']
 print(f'\nNPZ files contain data from following DUs: {du_list}')
 
 ################################################
@@ -85,7 +85,7 @@ def plot_transient_rate(utcs, sup_windows, sup_durations): # compute and plot tr
         # use a list comprehension to filter out empty lists and group time with non-empty time windows and durations
         windows_channel = sup_windows[channel]
         durations_channel = sup_durations[channel]
-        groups_utc_window_duration = [(utc, window, duration) for utc, window, duration in zip(utcs, windows_channel, durations_channel) if len(window) > 0 and utc.year > 2020]
+        groups_utc_window_duration = [(utc, window, duration) for utc, window, duration in zip(utcs, windows_channel, durations_channel)]
 
         # make a dictionary to pair hours with corresponding time windows and durations
         dict_hour_window_duration = defaultdict(list)
@@ -93,31 +93,50 @@ def plot_transient_rate(utcs, sup_windows, sup_durations): # compute and plot tr
             dict_hour_window_duration[(utc.date(), utc.hour)].append((window, duration))
 
         # create lists of hours and transient rates
-        date_hour = []
+        date_hour      = []
         transient_rate = []
         for (date, hour), pairs_window_duration in dict_hour_window_duration.items():
             date_hour.append(datetime.combine(date, time(hour=hour)))
-            windows = []
+            windows   = []
             durations = []
             for window, duration in pairs_window_duration:
                 windows.append(window)
                 durations.append(duration)
-            windows = list(itertools.chain(*windows)) # merge all time windows in the same time unit
-            total_duration = sum(durations)
-            transient_rate.append(len(windows)/total_duration*1000) # (10^9 Hz) --> MHz
+            total_duration = len(windows) * DURATION
+            windows        = list(itertools.chain(*windows)) # merge all time windows in the same time unit
+            transient_rate.append(len(windows)/total_duration*1e6) # (10^9 Hz) --> kHz
 
         # plot the data per channel
         ax.plot(date_hour, transient_rate)
-        ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d %H:%M')) # set the date format
-        ax.set_xlabel('Time (Date and Hour)')
-        ax.set_ylabel('Transient Rates (MHz)')
-        ax.set_title(f'Transient Rate for channel {channel}')
+        ax.xaxis.set_major_formatter(mdates.DateFormatter('%m-%d %H')) # set the date format
+        ax.set_xlabel('Time by date and hour')
+        ax.set_ylabel('Transient Rate / kHz')
+        ax.set_title(f'Channel {channel}')
         ax.grid(True)
 
-    plt.gcf().autofmt_xdate() # rotate date labels automatically
-    plt.suptitle(f'Transient Rate Evolution of DU{du}', fontsize=16) # add a main/super title for the entire figure
-    plt.savefig(f'result/transient_rate_DU{du}.png')  # save the figure as a PNG file
-    plt.close(fig)  # close the figure to free up memory
+        # rotate X labels
+        for tick in ax.get_xticklabels():
+            tick.set_rotation(15)
+
+        # add vertical lines at sunrise and sunset
+        ylim = ax.get_ylim()
+        ax.vlines([datetime(2023, 10, 26, 19, 00),
+                   datetime(2023, 10, 27, 8, 00),
+                   datetime(2023, 10, 27, 19, 00),
+                   datetime(2023, 10, 28, 8, 00),
+                   datetime(2023, 10, 28, 19, 00)], ymin=ylim[0], ymax=ylim[1], color = 'r', linestyles='dashed')
+
+    # adjust the spacing between the subplots to accommodate the rotated X labels
+    plt.subplots_adjust(hspace=0.5)
+
+    # add a main/super title for the entire figure
+    plt.suptitle(f'Transient Rate Evolution of DU{du}', fontsize=16)
+
+    # save the figure as a PNG file
+    plt.savefig(f'result/transient_rate_DU{du}.png')
+
+    # close the figure to free up memory
+    plt.close(fig)
 
 channels = ['X', 'Y', 'Z']
 
@@ -127,11 +146,11 @@ for du in du_list:
     durations = {channel: {} for channel in channels}
 
     # read selected NPZ file
-    npz_file = np.load(f'result/DU{du}_threshold5_separation100.npz', allow_pickle=True)
+    npz_file = np.load(f'DU10/DU{du}_threshold5_separation100.npz', allow_pickle=True)
     gps_times = npz_file['gps_times']
     for channel in channels:
         windows[channel] = npz_file[f'window{channel}']
-        durations[channel] = npz_file[f'duration{channel}']
+        durations[channel] = npz_file[f'event_times{channel}']
     
     # convert GPS times to UTCs
     utcs = gps2utc(gps_times)
