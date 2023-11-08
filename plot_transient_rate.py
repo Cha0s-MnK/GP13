@@ -16,7 +16,7 @@ plt.rcParams['ytick.direction'] = 'in'
 import os
 import time as wall_time
 start_time = wall_time.perf_counter()
-'''
+
 ###########################
 # DEFINE PARSER ARGUMENTS #
 ###########################
@@ -53,8 +53,8 @@ if not files:
 
 # get list of used DUs
 du_list = [file[9:13] for file in files]
-'''
-du_list = ['1013', '1016'] # only care about DU1013 and DU1016 now
+# only care about DU1013 and DU1016 now
+#du_list = ['1013', '1016']
 print(f'\nNPZ files contain data from following DUs: {du_list}')
 
 ################################################
@@ -69,51 +69,60 @@ def gps2utc1(gps_time): # a helper function to convert single GPS time to UTC
     leap_seconds = 18 # number of leap seconds since Jan 6th 1980
     return datetime.utcfromtimestamp(gps_time - leap_seconds)
 
-def plot_transient_rate(utcs, windows, durations, channel): # compute and plot transient rate for 3 ADC channels of selected DU
-    # use a list comprehension to filter out empty lists and pair time with non-empty time windows
-    windows_channel = windows[channel]
-    durations_channel = durations[channel]
-    groups_utc_window_duration = [(utc, window, duration) for utc, window, duration in zip(utcs, windows_channel, durations_channel) if len(window) > 0 and utc.year > 2020]
+def plot_transient_rate(utcs, sup_windows, sup_durations): # compute and plot transient rate for 3 ADC channels of selected DU
+    # create a 2x2 layout for the subplots and adjust figure size as needed
+    fig, axes = plt.subplots(2, 2, figsize=(15, 10))
 
-    # group time windows by hour
-    dict_hour_window = defaultdict(list)
-    for utc, window, duration in groups_utc_window_duration:
-        dict_hour_window[(utc.date(), utc.hour)].append((window, duration))
-    '''
-    # print the result
-    for (date, hour), windows in dict_hour_window.items():
-        print(f'({date}, {hour}): {windows}')
-    '''
-    # create lists of dates with hours and number of transients/pulses
-    date_hour = []
-    transient_rate = []
-    for (date, hour), pairs_window_duration in dict_hour_window.items():
-        date_hour.append(datetime.combine(date, time(hour=hour)))
-        windows = [window for window, duration in pairs_window_duration]
-        durations = [duration for window, duration in pairs_window_duration]
-        windows = list(itertools.chain(*windows)) # merge all time windows in the same time unit
-        total_duration = sum(durations)
-        transient_rate.append(len(windows)/total_duration*1000) # (10^9 Hz) --> MHz
+    # remove the last/4th ax as we only have 3 ADC channels to plot
+    fig.delaxes(axes[1,1])
 
-    # plot the data
-    fig, ax = plt.subplots()
-    ax.plot(date_hour, transient_rate)
+    # flatten axes array for easier indexing
+    axes = axes.flatten()
 
-    # set the date format
-    ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d %H:%M'))
+    for id, channel in enumerate(channels):
+        ax = axes[id]
 
-    # rotate date labels automatically
-    fig.autofmt_xdate()
+        # use a list comprehension to filter out empty lists and group time with non-empty time windows and durations
+        windows_channel = sup_windows[channel]
+        durations_channel = sup_durations[channel]
+        groups_utc_window_duration = [(utc, window, duration) for utc, window, duration in zip(utcs, windows_channel, durations_channel) if len(window) > 0 and utc.year > 2020]
 
-    plt.xlabel('Time (Date and Hour)')
-    plt.ylabel('Transient Rates (MHz)')
-    plt.title(f'Transient Rate Evolution of DU{du} in channel{channel}')
-    plt.grid(True)
-    plt.savefig(f'result/transient_rate_DU{du}_channel{channel}.png')
+        # make a dictionary to pair hours with corresponding time windows and durations
+        dict_hour_window_duration = defaultdict(list)
+        for utc, window, duration in groups_utc_window_duration:
+            dict_hour_window_duration[(utc.date(), utc.hour)].append((window, duration))
+
+        # create lists of hours and transient rates
+        date_hour = []
+        transient_rate = []
+        for (date, hour), pairs_window_duration in dict_hour_window_duration.items():
+            date_hour.append(datetime.combine(date, time(hour=hour)))
+            windows = []
+            durations = []
+            for window, duration in pairs_window_duration:
+                windows.append(window)
+                durations.append(duration)
+            windows = list(itertools.chain(*windows)) # merge all time windows in the same time unit
+            total_duration = sum(durations)
+            transient_rate.append(len(windows)/total_duration*1000) # (10^9 Hz) --> MHz
+
+        # plot the data per channel
+        ax.plot(date_hour, transient_rate)
+        ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d %H:%M')) # set the date format
+        ax.set_xlabel('Time (Date and Hour)')
+        ax.set_ylabel('Transient Rates (MHz)')
+        ax.set_title(f'Transient Rate for channel {channel}')
+        ax.grid(True)
+
+    plt.gcf().autofmt_xdate() # rotate date labels automatically
+    plt.suptitle(f'Transient Rate Evolution of DU{du}', fontsize=16) # add a main/super title for the entire figure
+    plt.savefig(f'result/transient_rate_DU{du}.png')  # save the figure as a PNG file
+    plt.close(fig)  # close the figure to free up memory
+
+channels = ['X', 'Y', 'Z']
 
 for du in du_list:
     # make dictionaries
-    channels  = ['X', 'Y', 'Z']
     windows = {channel: {} for channel in channels}
     durations = {channel: {} for channel in channels}
 
@@ -127,8 +136,8 @@ for du in du_list:
     # convert GPS times to UTCs
     utcs = gps2utc(gps_times)
 
-    for channel in channels:
-        plot_transient_rate(utcs, windows, durations, channel)
+    # plot transient rates for 3 ADC channels
+    plot_transient_rate(utcs, windows, durations)
 
 # record the running time
 end_time = wall_time.perf_counter()
