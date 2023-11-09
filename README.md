@@ -1,5 +1,5 @@
-# GP13 project
+# GP13 Transient Project
 
-Welcome to GP13! These are codes written by 2 Chinese guys in LPNHE, France.
+Welcome to the study of GP13 Transient! These are codes written by 2 Chinese guys in LPNHE, France.
 
 ## Commission Day-night Effect
