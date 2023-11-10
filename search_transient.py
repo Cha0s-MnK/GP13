@@ -26,6 +26,10 @@ start_time = wall_time.perf_counter()
 # make dictionaries to avoid defining too many variables
 channels  = ['X', 'Y', 'Z']
 
+# input dates manually
+dates = ['20231011/', '20231012/', '20231013/', '20231014/', '20231015/', '20231016/', '20231017/', '20231018/', 
+         '20231019/', '20231020/', '20231027/', '20231028/', '20231029/', '20231030/', '20231031/']
+
 data_dir            = 'data/' # path of data directory containing ROOT files to analyze
 specific_date       = '20231031/' # specify ROOT files of which date to analyze
 num_threshold       = 5 # trigger threshold of the transient (times of noises)
@@ -35,9 +39,6 @@ standard_separation = 100 # required separation between two pulses in a trace (s
 # get ROOT files and their info to analyze
 files     = sorted(glob.glob(os.path.join(data_dir, specific_date, '*.root')))
 num_files = len(files)
-
-# define the NPZ directory to store the computed PSDs
-npz_dir = 'result2/'
 
 #####################################
 # GET ROOT FILES AND DU INFORMATION #
@@ -71,12 +72,12 @@ mode  = path_to_data_dir_split[6]
 # MAIN FUNCTION TO SEARCH TRANSIENTS #
 ######################################
 
-def fast_search(trace, noise, num_threshold, standard_separation): 
+def std_search(trace, num_threshold, standard_separation): 
     # stop if there are no transients
-    threshold = num_threshold * noise
+    threshold = num_threshold * np.std(trace)
     exceed_threshold = np.abs(trace) > threshold
     if not np.any(exceed_threshold):
-        return np.empty((0, 2), dtype=int)
+        return []
     
     # find trace positions where threshold is exceeded
     crossing_ids = np.flatnonzero(exceed_threshold)
@@ -88,8 +89,44 @@ def fast_search(trace, noise, num_threshold, standard_separation):
     pulse_ids             = np.flatnonzero(separations_crossings > standard_separation)
     pulse_ids             = np.concatenate(([-1], pulse_ids, [len(crossing_ids)-1]))
     
-    # preallocate the return array for time windows
-    windows = np.empty((len(pulse_ids)-1, 2), dtype=int)
+    # preallocate the return list for time windows
+    windows = [[0, 0] for _ in range(len(pulse_ids) - 1)]
+
+    # search all transients/pulses
+    half_separation = standard_separation // 2
+    for i in range(len(pulse_ids)-1):
+        # get the start index of current pulse
+        start_id = crossing_ids[pulse_ids[i]+1] - half_separation
+        start_id = max(0, start_id) # fix the 1st pulse
+
+        # get the stop index of current pulse
+        stop_id = crossing_ids[pulse_ids[i+1]] + half_separation
+        stop_id = min(len(trace)-1, stop_id) # fix the last pulse
+
+        windows[i] = [start_id, stop_id]
+
+    return windows
+
+def noise_search(trace, noise, num_threshold, standard_separation): 
+    # stop if there are no transients
+    print(np.std(trace))
+    threshold = num_threshold * noise
+    exceed_threshold = np.abs(trace) > threshold
+    if not np.any(exceed_threshold):
+        return []
+    
+    # find trace positions where threshold is exceeded
+    crossing_ids = np.flatnonzero(exceed_threshold)
+    
+    # find the separations between consecutive threshold crossings
+    separations_crossings = np.diff(crossing_ids)
+
+    # locate pulse indices in threshold crossing indices
+    pulse_ids             = np.flatnonzero(separations_crossings > standard_separation)
+    pulse_ids             = np.concatenate(([-1], pulse_ids, [len(crossing_ids)-1]))
+    
+    # preallocate the return list for time windows
+    windows = [[0, 0] for _ in range(len(pulse_ids) - 1)]
 
     # search all transients/pulses
     half_separation = standard_separation // 2
@@ -143,24 +180,21 @@ for file_id, file in enumerate(files):
         # get traces and search transients
         traces = np.array(tadc.trace_ch[0])[mask_channel]
         for i, channel in enumerate(channels):
-            windows[channel][du].append(fast_search(traces[i], noises[i], num_threshold, standard_separation))
+            windows[channel][du].append(std_search(traces[i], num_threshold, standard_separation))
+            #windows[channel][du].append(noise_search(traces[i], noises[i], num_threshold, standard_separation))
         gps_times[du].append(trawv.gps_time[0])
 
 # loop over all DUs
 for du in du_list:
-    # convert lists to numpy arrays
-    for channel in channels:
-        windows[channel][du] = np.array(windows[channel], dtype=object)
-    gps_times[du] = np.array(gps_times)
-
-    # save all info in NPZ file
+    # save all info into a NPZ file
+    npz_dir = 'result3/'
     npz_file = 'DU{}_threshold{}_separation{}_date{}.npz'.format(du, num_threshold, standard_separation, specific_date[:8])
-    np.savez(os.path.join(npz_dir, npz_file),
+    np.savez(os.path.join(npz_dir, specific_date, npz_file),
              du = du,
              **{f'window{channel}': windows[channel][du] for channel in channels},
              #**{f'crossing{channel}': crossings[channel] for channel in channels},
              gps_times = gps_times[du])
-    print(f'\nSaved NPZ file: {npz_dir}{npz_file}')
+    print(f'\nSaved NPZ file: {npz_dir}{specific_date}{npz_file}')
 
 # record the running time
 end_time = wall_time.perf_counter()
