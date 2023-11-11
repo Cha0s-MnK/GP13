@@ -75,52 +75,6 @@ def compute_rate(utcs, windows_channel):
     
     return DunHuang_hours, transient_rates
 
-# plot transient rates for 3 ADC channels of 1 DU
-def plot_rate(du, DunHuang_hours, transient_rates):
-    # create a 3x1 layout for the subplots and adjust figure size
-    fig, axes = plt.subplots(3, 1, figsize=(25, 10))
-
-    # flatten axes array for easier indexing
-    axes = axes.flatten()
-
-    # plot the data per channel
-    for id, channel in enumerate(channels):
-        # reformat DunHuang hours and transient rates to plot
-        DunHuang_hours[channel][du] = list(itertools.chain(*DunHuang_hours[channel][du]))
-        transient_rates[channel][du] = list(itertools.chain(*transient_rates[channel][du]))
-
-        # locate corresponding axis and plot
-        ax = axes[id]
-        ax.scatter(DunHuang_hours[channel][du], transient_rates[channel][du])
-        ax.xaxis.set_major_formatter(mdates.DateFormatter('%m-%d %H')) # set the date format
-        ax.set_xlabel('DunHuang Time in date and hour')
-        ax.set_ylabel('Transient Rate / kHz')
-        ax.set_title(f'Channel {channel}')
-        ax.grid(True)
-
-        # rotate X labels
-        for tick in ax.get_xticklabels():
-            tick.set_rotation(15)
-        '''
-        # add vertical lines at sunrise and sunset
-        ylim = ax.get_ylim()
-        ax.vlines([datetime(2023, 10, 27, 8, 00),
-                   datetime(2023, 10, 27, 19, 00),
-                   datetime(2023, 10, 28, 8, 00),
-                   datetime(2023, 10, 28, 19, 00)], ymin=ylim[0], ymax=ylim[1], color = 'r', linestyles='dashed')
-        '''
-    # adjust the spacing between the subplots to accommodate the rotated X labels
-    plt.subplots_adjust(hspace=0.4)
-
-    # add a main/super title for the entire figure
-    plt.suptitle(f'Transient Rate Evolution of DU{du} with {num_threshold} Threshold {standard_separation} Separation', fontsize=18)
-
-    # save the figure as a PNG file
-    plt.savefig(f'plot2/rate_DU{du}_threshold{num_threshold}_separation{standard_separation}.png')
-
-    # close the figure to free up memory
-    plt.close(fig)
-
 # make dictionaries for easier indexing
 channels = ['X', 'Y', 'Z']
 DunHuang_hours = {channel: {} for channel in channels}
@@ -138,7 +92,7 @@ for du in du_list:
 for file in files:
     # get information from this file
     npz_file = np.load(file, allow_pickle=True)
-    du = npz_file['du']
+    du = str(npz_file['du'])
     windows = {channel: npz_file[f'window{channel}'] for channel in channels}
     gps_times = npz_file['gps_times']
 
@@ -147,13 +101,100 @@ for file in files:
 
     # compute transient rates for 3 ADC channels
     for channel in channels:
-        hours, rates = compute_rate(utcs, windows[channel])
-        DunHuang_hours[channel][du].append(hours)
-        transient_rates[channel][du].append(rates)
+        part_hours, part_rates = compute_rate(utcs, windows[channel])
+        DunHuang_hours[channel][du].append(part_hours)
+        transient_rates[channel][du].append(part_rates)
     
 # loop through all DUs to plot transient rates for 3 ADC channels
 for du in du_list:
-    plot_rate(du, DunHuang_hours, transient_rates)
+    # create a 3x1 layout for the subplots and adjust figure size
+    fig, axes = plt.subplots(3, 1, figsize=(30, 12))
+
+    # flatten axes array for easier indexing
+    axes = axes.flatten()
+
+    # plot the data per channel
+    for id, channel in enumerate(channels):
+        # reformat DunHuang hours and transient rates to plot
+        DunHuang_hours[channel][du] = list(itertools.chain(*DunHuang_hours[channel][du]))
+        transient_rates[channel][du] = list(itertools.chain(*transient_rates[channel][du]))
+
+        # locate corresponding axis
+        ax = axes[id]
+
+        # 
+        ax.scatter(DunHuang_hours[channel][du], transient_rates[channel][du], s=9)
+        ax.grid(True)
+
+        # set title on the right-hand side
+        ax.text(1.0, 0.5, f'Channel {channel}', verticalalignment='center', horizontalalignment='left', transform=ax.transAxes, fontsize=20, rotation=-90)
+        
+        # set X-limits
+        ax.set_xlim(datetime(2023, 10, 11, 6), datetime(2023, 10, 31, 18))
+
+        # set the major tick locator to every 12 hours
+        ax.xaxis.set_major_locator(mdates.HourLocator(interval=12))
+
+        # only set X-tick labels for the last subplot
+        if id < len(channels) - 1:
+            ax.set_xticklabels([])
+        else:
+            # set the formatting of the ticks to include the hour
+            ax.xaxis.set_major_formatter(mdates.DateFormatter('%m-%d %H:%M'))
+
+            # rotate X labels
+            for tick in ax.get_xticklabels():
+                tick.set_rotation(25)
+        
+        # add vertical lines at sunrise and sunset
+        ylim = ax.get_ylim()
+        ax.vlines([datetime(2023, 10, 11, 8, 00),
+                   datetime(2023, 10, 12, 8, 00),
+                   datetime(2023, 10, 13, 8, 00),
+                   datetime(2023, 10, 14, 8, 00),
+                   datetime(2023, 10, 15, 8, 00),
+                   datetime(2023, 10, 16, 8, 00),
+                   datetime(2023, 10, 17, 8, 00),
+                   datetime(2023, 10, 18, 8, 00),
+                   datetime(2023, 10, 19, 8, 00),
+                   datetime(2023, 10, 20, 8, 00),
+                   datetime(2023, 10, 27, 8, 00),
+                   datetime(2023, 10, 28, 8, 00),
+                   datetime(2023, 10, 29, 8, 00),
+                   datetime(2023, 10, 30, 8, 00),
+                   datetime(2023, 10, 31, 8, 00),], ymin=ylim[0], ymax=ylim[1], color='red', linestyles='dashed')
+        ax.vlines([datetime(2023, 10, 11, 19, 00),
+                   datetime(2023, 10, 12, 19, 00),
+                   datetime(2023, 10, 13, 19, 00),
+                   datetime(2023, 10, 14, 19, 00),
+                   datetime(2023, 10, 15, 19, 00),
+                   datetime(2023, 10, 16, 19, 00),
+                   datetime(2023, 10, 17, 19, 00),
+                   datetime(2023, 10, 18, 19, 00),
+                   datetime(2023, 10, 19, 19, 00),
+                   datetime(2023, 10, 20, 19, 00),
+                   datetime(2023, 10, 26, 19, 00),
+                   datetime(2023, 10, 27, 19, 00),
+                   datetime(2023, 10, 28, 19, 00),
+                   datetime(2023, 10, 29, 19, 00),
+                   datetime(2023, 10, 30, 19, 00),
+                   datetime(2023, 10, 31, 19, 00),], ymin=ylim[0], ymax=ylim[1], color='orange', linestyles='dashed')
+
+    # set X label and Y label for entire figure
+    fig.text(0.5, 0.0, 'DunHuang Time in Date and Hour', ha='center', fontsize=20)
+    fig.text(0.0, 0.5, 'Transient Rate / kHz', va='center', rotation='vertical', fontsize=20)
+
+    # add a main/super title for the entire figure
+    plt.suptitle(f'Time Evolution of Transient Rates \n DU{du}, Threshold = {num_threshold}, Separation = {standard_separation}', fontsize=24)
+
+    # adjust layout
+    plt.tight_layout(rect=[0.01, 0.01, 1.0, 1.0])
+
+    # save the figure as a PNG file
+    plt.savefig(f'plot2/rate_DU{du}_threshold{num_threshold}_separation{standard_separation}.png')
+
+    # close the figure to free up memory
+    plt.close(fig)
 
 # record the running time
 end_time = wall_time.perf_counter()
