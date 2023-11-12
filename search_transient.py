@@ -1,5 +1,7 @@
-# import necessary packages
-import argparse
+###################
+# IMPORT PACKAGES #
+###################
+
 import glob
 import grand.dataio.root_trees as rt # GRANDLIB
 import numpy as np
@@ -23,53 +25,51 @@ start_time = wall_time.perf_counter()
 # DEFINE ARGUMENTS #
 ####################
 
-# make dictionaries to avoid defining too many variables
-channels  = ['X', 'Y', 'Z']
+# input date list manually
+date_list = ['20231011/', '20231012/', '20231013/', '20231014/', '20231015/', '20231016/', '20231017/', '20231018/', 
+             '20231019/', '20231020/', '20231027/', '20231028/', '20231029/', '20231030/', '20231031/']
 
-# input dates manually
-dates = ['20231011/', '20231012/', '20231013/', '20231014/', '20231015/', '20231016/', '20231017/', '20231018/', 
-         '20231019/', '20231020/', '20231027/', '20231028/', '20231029/', '20231030/', '20231031/']
-
+channel_list        = ['X', 'Y', 'Z'] # make dictionaries for easier indexing
 data_dir            = 'data/' # path of data directory containing ROOT files to analyze
 specific_date       = '20231031/' # specify ROOT files of which date to analyze
 num_threshold       = 5 # trigger threshold of the transient (times of noises)
-noises              = [19.0, 19.0, 19.0] # noise level for 3 ADC channels (ADC counts)
+noise_list          = [20.0, 20.0, 40.0] # average noise level for 3 ADC channels (ADC counts)
 standard_separation = 100 # required separation between two pulses in a trace (sample numbers)
 
-# get ROOT files and their info to analyze
-files     = sorted(glob.glob(os.path.join(data_dir, specific_date, '*.root')))
-num_files = len(files)
+##############################
+# GET ROOT FILES AND DU LIST #
+##############################
 
-#####################################
-# GET ROOT FILES AND DU INFORMATION #
-#####################################
+# get ROOT files and their information to analyze
+file_list = sorted(glob.glob(os.path.join(data_dir, specific_date, '*.root')))
+num_files = len(file_list)
 
-# initiate TADC tree of the file list to get basic info
-total_entries   = 0 # total number of entries across all files
-max_dus         = 0 # maximum used DUs
-id_max_dus_file = 0 # index of file that has maximum used DUs
-for i, file in enumerate(files):
-    tadc = rt.TADC(file)
-    tadc.get_entry(0) # get the entry from current file
-    total_entries += tadc.get_number_of_entries()
-    cur_dus = len(tadc.get_list_of_all_used_dus()) # get used DUs from current file
-    if cur_dus > max_dus:
-        max_dus         = cur_dus
-        id_max_dus_file = i
+# get list of all used DUs
 
-# get list of used DUs
-tadc    = rt.TADC(files[id_max_dus_file])
-du_list = tadc.get_list_of_all_used_dus()
+# create an empty set to store unique DUs
+du_set = set()
+
+# loop through all files to get used DUs
+for file in file_list:
+    tadc = rt.TADC(file) # initiate TADC tree of this file
+    tadc.get_entry(0) # get the entry from this file
+    used_dus = tadc.get_list_of_all_used_dus() # get used DUs from this file
+    du_set.update(used_dus) # update the set
+
+# convert the set to a list in order
+du_list = sorted(list(du_set))
+
+# print the list of all used DUs
 print(f'\nROOT files contain data from following DUs: {du_list}')
 '''
 # get some useful parameters from the data directory
-path_to_data_dir_split = path_to_data_dir.split('/')
+data_dir_split = data_dir.split('/')
 array = path_to_data_dir_split[4]
 month = path_to_data_dir_split[5]
 mode  = path_to_data_dir_split[6]
 '''
 ######################################
-# MAIN FUNCTION TO SEARCH TRANSIENTS #
+# CORE FUNCTION TO SEARCH TRANSIENTS #
 ######################################
 
 def std_search(trace, num_threshold, standard_separation): 
@@ -86,11 +86,11 @@ def std_search(trace, num_threshold, standard_separation):
     separations_crossings = np.diff(crossing_ids)
 
     # locate pulse indices in threshold crossing indices
-    pulse_ids             = np.flatnonzero(separations_crossings > standard_separation)
-    pulse_ids             = np.concatenate(([-1], pulse_ids, [len(crossing_ids)-1]))
+    pulse_ids = np.flatnonzero(separations_crossings > standard_separation)
+    pulse_ids = np.concatenate(([-1], pulse_ids, [len(crossing_ids)-1]))
     
     # preallocate the return list for time windows
-    windows = [[0, 0] for _ in range(len(pulse_ids) - 1)]
+    window_list = [[0, 0] for _ in range(len(pulse_ids) - 1)]
 
     # search all transients/pulses
     half_separation = standard_separation // 2
@@ -103,13 +103,12 @@ def std_search(trace, num_threshold, standard_separation):
         stop_id = crossing_ids[pulse_ids[i+1]] + half_separation
         stop_id = min(len(trace)-1, stop_id) # fix the last pulse
 
-        windows[i] = [start_id, stop_id]
+        window_list[i] = [start_id, stop_id]
 
-    return windows
+    return window_list
 
 def noise_search(trace, noise, num_threshold, standard_separation): 
     # stop if there are no transients
-    print(np.std(trace))
     threshold = num_threshold * noise
     exceed_threshold = np.abs(trace) > threshold
     if not np.any(exceed_threshold):
@@ -122,11 +121,11 @@ def noise_search(trace, noise, num_threshold, standard_separation):
     separations_crossings = np.diff(crossing_ids)
 
     # locate pulse indices in threshold crossing indices
-    pulse_ids             = np.flatnonzero(separations_crossings > standard_separation)
-    pulse_ids             = np.concatenate(([-1], pulse_ids, [len(crossing_ids)-1]))
+    pulse_ids = np.flatnonzero(separations_crossings > standard_separation)
+    pulse_ids = np.concatenate(([-1], pulse_ids, [len(crossing_ids)-1]))
     
     # preallocate the return list for time windows
-    windows = [[0, 0] for _ in range(len(pulse_ids) - 1)]
+    window_list = [[0, 0] for _ in range(len(pulse_ids) - 1)]
 
     # search all transients/pulses
     half_separation = standard_separation // 2
@@ -139,36 +138,36 @@ def noise_search(trace, noise, num_threshold, standard_separation):
         stop_id = crossing_ids[pulse_ids[i+1]] + half_separation
         stop_id = min(len(trace)-1, stop_id) # fix the last pulse
 
-        windows[i] = [start_id, stop_id]
+        window_list[i] = [start_id, stop_id]
 
-    return windows
+    return window_list
 
-#########################################
-# COMPUTE AND PLOT MEAN PSD FOR EACH DU #
-#########################################
+##################################
+# SEARCH TRANSIENTS IN ALL FILES #
+##################################
 
-# mask channels to disable channel 0 for GP13
+# mask channels to disable channel 0 for GP13 data
 mask_channel = np.array([False, True, True, True])
 
-# make dictionaries to avoid looping over all files for each DU
-windows = {channel: {} for channel in channels}
+# make dictionaries to avoid looping through all files more than once
+windows = {channel: {} for channel in channel_list}
 gps_times = {}
 
-# loop over all DUs
+# loop through all DUs to initiate dictionaries with empty lists
 for du in du_list:
-    for channel in channels:
+    for channel in channel_list:
         windows[channel][du] = []
     gps_times[du] = []
 
-# loop over all files
-for file_id, file in enumerate(files):
+# loop through all files
+for i, file in enumerate(file_list):
     # get info of this file
     tadc        = rt.TADC(file)
     trawv       = rt.TRawVoltage(file)
     num_entries = tadc.get_number_of_entries()
 
     # loop over all events in this file
-    print(f'\n{file_id+1}/{num_files}: Looping over {num_entries} events in {file}')
+    print(f'\n{i+1}/{num_files}: Looping over {num_entries} events/entries in {file}')
     for entry in range(num_entries):
         # get info of this entry
         tadc.get_entry(entry)
@@ -179,22 +178,21 @@ for file_id, file in enumerate(files):
     
         # get traces and search transients
         traces = np.array(tadc.trace_ch[0])[mask_channel]
-        for i, channel in enumerate(channels):
+        for i, channel in enumerate(channel_list):
             windows[channel][du].append(std_search(traces[i], num_threshold, standard_separation))
             #windows[channel][du].append(noise_search(traces[i], noises[i], num_threshold, standard_separation))
         gps_times[du].append(trawv.gps_time[0])
 
-# loop over all DUs
+# loop through all DUs
 for du in du_list:
     # save all info into a NPZ file
-    npz_dir = 'result3/'
+    npz_dir  = 'result2/'
     npz_file = 'DU{}_threshold{}_separation{}_date{}.npz'.format(du, num_threshold, standard_separation, specific_date[:8])
     np.savez(os.path.join(npz_dir, specific_date, npz_file),
              du = du,
-             **{f'window{channel}': windows[channel][du] for channel in channels},
-             #**{f'crossing{channel}': crossings[channel] for channel in channels},
+             **{f'window{channel}': windows[channel][du] for channel in channel_list},
              gps_times = gps_times[du])
-    print(f'\nSaved NPZ file: {npz_dir}{specific_date}{npz_file}')
+    print(f'\nSaved: {npz_dir}{specific_date}{npz_file}')
 
 # record the running time
 end_time = wall_time.perf_counter()
