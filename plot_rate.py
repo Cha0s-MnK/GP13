@@ -1,10 +1,17 @@
-# packages
+###################
+# IMPORT PACKAGES #
+###################
+
 from collections import defaultdict
 from datetime import datetime, time, timedelta
 import glob
 import itertools
 import numpy as np
 np.set_printoptions(threshold=np.inf)
+from matplotlib.lines import Line2D
+# create custom legend items
+custom_lines = [Line2D([0], [0], color='red', linestyle='dashed', lw=2),
+                Line2D([0], [0], color='orange', linestyle='dashed', lw=2)]
 import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
 plt.rc('font', size=10)
@@ -17,25 +24,44 @@ import os
 import time as wall_time
 start_time = wall_time.perf_counter()
 
-# constants and parameters
-DURATION            = 4096 # constant; (ns)
+####################
+# DEFINE ARGUMENTS #
+####################
+
+num_samples         = 2048 # number of samples in a trace
 num_threshold       = 5 # trigger threshold of the transient (times of noises)
 standard_separation = 100 # required separation between two pulses in a trace (sample numbers)
+time_step           = 2 # time step of each sample (ns)
 
-# input DUs manually
-du_list = ['1010', '1013', '1016', '1017', '1019', '1020', '1021', '1029', '1031', '1032', '1033', '1035', '1041']
+#############################
+# GET NPZ FILES AND DU LIST #
+#############################
 
 # path of data directory containing NPZ files to plot
 data_dir      = 'result2/*/'
 specific_file = '*.npz'
 
 # get all NPZ files
-files = sorted(glob.glob(os.path.join(data_dir, specific_file)))
+file_list = sorted(glob.glob(os.path.join(data_dir, specific_file)))
 
-# show all NPZ files
+# create an empty set to store unique DUs
+du_set = set()
+
+# show all NPZ files and extract DUs
 print('\nData from following NPZ files:')
-for file in files:
-    print(os.path.basename(file))
+for file in file_list:
+    basename = os.path.basename(file)
+    print(basename)
+    
+    # split the filename on underscore
+    du = basename.split('_')[0][2:]
+    du_set.add(du)
+
+# convert the set to a list in order
+du_list = sorted(list(du_set))
+
+# print the list of all used DUs
+print(f'\nNPZ files contain data from following DUs: \n{du_list}\n')
 
 ################################################
 # COMPUTE AND PLOT TRANSIENT RATES FOR EACH DU #
@@ -66,9 +92,9 @@ def compute_rate(utcs, windows_channel):
     transient_rates = []
     for (date, hour), windows in dict_hour_window.items():
         utc_hours.append(datetime.combine(date, time(hour=hour)))
-        total_duration = len(windows) * DURATION
-        windows        = list(itertools.chain(*windows)) # filter out empty time windows and reformat windows
-        transient_rates.append(len(windows)/total_duration*1e6) # GHz --> kHz
+        duration = len(windows) * num_samples * time_step
+        windows  = list(itertools.chain(*windows)) # filter out empty time windows and reformat windows
+        transient_rates.append(len(windows) / duration * 1e6) # GHz --> kHz
 
     # convert UTCs to DunHuang local times
     DunHuang_hours = [hour + timedelta(hours=8) for hour in utc_hours]
@@ -89,7 +115,7 @@ for du in du_list:
     gps_times[du] = []
 
 # loop through all files to compute transient rates
-for file in files:
+for file in file_list:
     # get information from this file
     npz_file = np.load(file, allow_pickle=True)
     du = str(npz_file['du'])
@@ -108,7 +134,7 @@ for file in files:
 # loop through all DUs to plot transient rates for 3 ADC channels
 for du in du_list:
     # create a 3x1 layout for the subplots and adjust figure size
-    fig, axes = plt.subplots(3, 1, figsize=(30, 12))
+    fig, axes = plt.subplots(3, 1, figsize=(36, 12), dpi=256)
 
     # flatten axes array for easier indexing
     axes = axes.flatten()
@@ -122,29 +148,23 @@ for du in du_list:
         # locate corresponding axis
         ax = axes[id]
 
-        # 
-        ax.scatter(DunHuang_hours[channel][du], transient_rates[channel][du], s=9)
+        # scatter points and add vertical lines to make the plot more clearly
+        ax.scatter(DunHuang_hours[channel][du], transient_rates[channel][du], color='blue', s=9, alpha=0.6)
+        ax.vlines(DunHuang_hours[channel][du], 0, transient_rates[channel][du], color='blue', linestyle='solid', linewidth=4, alpha=0.75)
+
         ax.grid(True)
 
+        # enable ticks on both left and right sides of the plot
+        ax.tick_params(axis='y', labelleft=True, labelright=True)
+
         # set title on the right-hand side
-        ax.text(1.0, 0.5, f'Channel {channel}', verticalalignment='center', horizontalalignment='left', transform=ax.transAxes, fontsize=20, rotation=-90)
+        ax.text(1.01, 0.5, f'Channel {channel}', verticalalignment='center', horizontalalignment='left', transform=ax.transAxes, fontsize=20, rotation=-90)
         
         # set X-limits
         ax.set_xlim(datetime(2023, 10, 11, 6), datetime(2023, 10, 31, 18))
 
         # set the major tick locator to every 12 hours
         ax.xaxis.set_major_locator(mdates.HourLocator(interval=12))
-
-        # only set X-tick labels for the last subplot
-        if id < len(channels) - 1:
-            ax.set_xticklabels([])
-        else:
-            # set the formatting of the ticks to include the hour
-            ax.xaxis.set_major_formatter(mdates.DateFormatter('%m-%d %H:%M'))
-
-            # rotate X labels
-            for tick in ax.get_xticklabels():
-                tick.set_rotation(25)
         
         # add vertical lines at sunrise and sunset
         ylim = ax.get_ylim()
@@ -180,18 +200,33 @@ for du in du_list:
                    datetime(2023, 10, 30, 19, 00),
                    datetime(2023, 10, 31, 19, 00),], ymin=ylim[0], ymax=ylim[1], color='orange', linestyles='dashed')
 
+        # only set X-tick labels for the last subplot
+        if id < len(channels) - 1:
+            ax.set_xticklabels([])
+        else:
+            # set the formatting of the ticks to include the hour
+            ax.xaxis.set_major_formatter(mdates.DateFormatter('%m-%d %H:%M'))
+
+            # rotate X labels
+            for tick in ax.get_xticklabels():
+                tick.set_rotation(15)
+
     # set X label and Y label for entire figure
     fig.text(0.5, 0.0, 'DunHuang Time in Date and Hour', ha='center', fontsize=20)
     fig.text(0.0, 0.5, 'Transient Rate / kHz', va='center', rotation='vertical', fontsize=20)
+    
+    # add the figure legend
+    fig.legend(custom_lines, ['Sunrise', 'Sunset'], loc='upper right', fontsize=18, bbox_to_anchor=(0.98,1), bbox_transform=plt.gcf().transFigure)
 
     # add a main/super title for the entire figure
     plt.suptitle(f'Time Evolution of Transient Rates \n DU{du}, Threshold = {num_threshold}, Separation = {standard_separation}', fontsize=24)
 
     # adjust layout
-    plt.tight_layout(rect=[0.01, 0.01, 1.0, 1.0])
+    plt.tight_layout(rect=[0.01, 0.01, 0.99, 1.0])
 
     # save the figure as a PNG file
     plt.savefig(f'plot2/rate_DU{du}_threshold{num_threshold}_separation{standard_separation}.png')
+    print(f'Saved: plot2/rate_DU{du}_threshold{num_threshold}_separation{standard_separation}.png')
 
     # close the figure to free up memory
     plt.close(fig)
