@@ -28,6 +28,7 @@ start_time = wall_time.perf_counter()
 # DEFINE ARGUMENTS #
 ####################
 
+channels            = ['X', 'Y', 'Z'] # make dictionaries for easier indexing
 num_samples         = 2048 # number of samples in a trace
 num_threshold       = 5 # trigger threshold of the transient (times of noises)
 standard_separation = 100 # required separation between two pulses in a trace (sample numbers)
@@ -38,7 +39,7 @@ time_step           = 2 # time step of each sample (ns)
 #############################
 
 # path of data directory containing NPZ files to plot
-data_dir      = 'result2/*/'
+data_dir      = 'result/*/'
 specific_file = '*.npz'
 
 # get all NPZ files
@@ -88,48 +89,44 @@ def compute_rate(utcs, windows_channel):
         dict_hour_window[(utc.date(), utc.hour)].append(window)
 
     # build lists of UTC hours and transient rates
-    utc_hours       = []
-    transient_rates = []
+    utc_hour_list = []
+    rate_list     = []
     for (date, hour), windows in dict_hour_window.items():
-        utc_hours.append(datetime.combine(date, time(hour=hour)))
-        duration = len(windows) * num_samples * time_step
+        utc_hour_list.append(datetime.combine(date, time(hour=hour)))
+        duration = len(windows) * num_samples * time_step # total time of traces
         windows  = list(itertools.chain(*windows)) # filter out empty time windows and reformat windows
-        transient_rates.append(len(windows) / duration * 1e6) # GHz --> kHz
+        rate_list.append(len(windows) / duration * 1e6) # GHz --> kHz
 
     # convert UTCs to DunHuang local times
-    DunHuang_hours = [hour + timedelta(hours=8) for hour in utc_hours]
+    DunHuang_hour_list = [utc_hour + timedelta(hours=8) for utc_hour in utc_hour_list]
     
-    return DunHuang_hours, transient_rates
+    return DunHuang_hour_list, rate_list
 
 # make dictionaries for easier indexing
-channels = ['X', 'Y', 'Z']
-DunHuang_hours = {channel: {} for channel in channels}
-transient_rates = {channel: {} for channel in channels}
-gps_times = {}
+hours_list = {channel: {} for channel in channels}
+rates_list = {channel: {} for channel in channels}
 
 # loop through all DUs to initiate dictionaries with empty lists
 for du in du_list:
     for channel in channels:
-        DunHuang_hours[channel][du] = []
-        transient_rates[channel][du] = []
-    gps_times[du] = []
+        hours_list[channel][du] = []
+        rates_list[channel][du] = []
 
 # loop through all files to compute transient rates
 for file in file_list:
     # get information from this file
-    npz_file = np.load(file, allow_pickle=True)
-    du = str(npz_file['du'])
-    windows = {channel: npz_file[f'window{channel}'] for channel in channels}
-    gps_times = npz_file['gps_times']
+    npz_file     = np.load(file, allow_pickle=True)
+    du           = str(npz_file['du'])
+    windows_list = {channel: npz_file[f'window{channel}'] for channel in channels}
 
     # convert GPS times to UTCs
-    utcs = gps2utc(gps_times)
+    utcs = gps2utc(npz_file['gps_times'])
 
     # compute transient rates for 3 ADC channels
     for channel in channels:
-        part_hours, part_rates = compute_rate(utcs, windows[channel])
-        DunHuang_hours[channel][du].append(part_hours)
-        transient_rates[channel][du].append(part_rates)
+        part_hours, part_rates = compute_rate(utcs, windows_list[channel])
+        hours_list[channel][du].append(part_hours)
+        rates_list[channel][du].append(part_rates)
     
 # loop through all DUs to plot transient rates for 3 ADC channels
 for du in du_list:
@@ -142,16 +139,17 @@ for du in du_list:
     # plot the data per channel
     for id, channel in enumerate(channels):
         # reformat DunHuang hours and transient rates to plot
-        DunHuang_hours[channel][du] = list(itertools.chain(*DunHuang_hours[channel][du]))
-        transient_rates[channel][du] = list(itertools.chain(*transient_rates[channel][du]))
+        hours_list[channel][du] = list(itertools.chain(*hours_list[channel][du]))
+        rates_list[channel][du] = list(itertools.chain(*rates_list[channel][du]))
 
         # locate corresponding axis
         ax = axes[id]
 
         # scatter points and add vertical lines to make the plot more clearly
-        ax.scatter(DunHuang_hours[channel][du], transient_rates[channel][du], color='blue', s=9, alpha=0.6)
-        ax.vlines(DunHuang_hours[channel][du], 0, transient_rates[channel][du], color='blue', linestyle='solid', linewidth=4, alpha=0.75)
+        ax.scatter(hours_list[channel][du], rates_list[channel][du], color='blue', s=9, alpha=0.6)
+        ax.vlines(hours_list[channel][du], 0, rates_list[channel][du], color='blue', linestyle='solid', linewidth=4, alpha=0.75)
 
+        # enable gird
         ax.grid(True)
 
         # enable ticks on both left and right sides of the plot
@@ -225,8 +223,8 @@ for du in du_list:
     plt.tight_layout(rect=[0.01, 0.01, 0.99, 1.0])
 
     # save the figure as a PNG file
-    plt.savefig(f'plot2/rate_DU{du}_threshold{num_threshold}_separation{standard_separation}.png')
-    print(f'Saved: plot2/rate_DU{du}_threshold{num_threshold}_separation{standard_separation}.png')
+    plt.savefig(f'plot/rate_DU{du}_threshold{num_threshold}_separation{standard_separation}.png')
+    print(f'Saved: plot/rate_DU{du}_threshold{num_threshold}_separation{standard_separation}.png')
 
     # close the figure to free up memory
     plt.close(fig)
