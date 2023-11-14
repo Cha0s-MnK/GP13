@@ -27,7 +27,7 @@ start_time = wall_time.perf_counter()
 
 channels            = ['X', 'Y', 'Z'] # make dictionaries for easier indexing
 data_dir            = 'data/' # path of data directory containing ROOT files to analyze
-specific_date       = '20231031/' # specify ROOT files of which date to analyze
+specific_date       = '20231013/' # specify ROOT files of which date to analyze
 num_crossings       = 2 # least number of threshold crossings in a time window
 num_threshold       = 5 # trigger threshold of the transient (times of noises)
 noises              = [20.0, 20.0, 40.0] # average noise level for 3 ADC channels (ADC counts)
@@ -90,7 +90,7 @@ def search_windows(trace, threshold, standard_separation):
     pulse_ids = np.concatenate(([-1], pulse_ids, [len(crossing_ids)-1]))
     
     # preallocate the return list for time windows
-    window_list = [[0, 0] for _ in range(len(pulse_ids) - 1)]
+    window_list = []
 
     # search all transients/pulses
     half_separation = standard_separation // 2
@@ -103,7 +103,9 @@ def search_windows(trace, threshold, standard_separation):
         stop_id = crossing_ids[pulse_ids[i+1]] + half_separation
         stop_id = min(len(trace)-1, stop_id) # fix the last pulse
 
-        window_list[i] = [start_id, stop_id]
+        # check if this time window contains enough crossings
+        if np.sum(exceed_threshold[start_id:stop_id+1]) >= num_crossings:
+            window_list.append([start_id, stop_id])
 
     return window_list
 
@@ -176,7 +178,7 @@ for file_id, file in enumerate(file_list):
 # loop through all DUs
 for du in du_list:
     # save all info into a NPZ file
-    npz_dir  = 'result2/'
+    npz_dir  = 'result/'
     npz_file = 'DU{}_threshold{}_separation{}_date{}.npz'.format(du, num_threshold, standard_separation, specific_date[:8])
     np.savez(os.path.join(npz_dir, specific_date, npz_file),
              du = du,
