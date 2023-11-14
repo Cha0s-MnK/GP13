@@ -10,13 +10,6 @@ import os
 import time as wall_time
 start_time = wall_time.perf_counter()
 
-# input dates manually
-date_list = ['20231011/', '20231012/', '20231013/', '20231014/', '20231015/', '20231016/', '20231017/', '20231018/', 
-             '20231019/', '20231020/', '20231027/', '20231028/', '20231029/', '20231030/', '20231031/']
-
-# input DUs manually
-du_list = ['1010', '1013', '1016', '1017', '1019', '1020', '1021', '1029', '1031', '1032', '1033', '1035', '1041']
-
 #############################################
 # SEARCH FOR TRANSIENTS IN GRAND DATA FILES #
 #############################################
@@ -35,9 +28,17 @@ du_list = ['1010', '1013', '1016', '1017', '1019', '1020', '1021', '1029', '1031
 channels            = ['X', 'Y', 'Z'] # make dictionaries for easier indexing
 data_dir            = 'data/' # path of data directory containing ROOT files to analyze
 specific_date       = '20231031/' # specify ROOT files of which date to analyze
+num_crossings       = 2 # least number of threshold crossings in a time window
 num_threshold       = 5 # trigger threshold of the transient (times of noises)
 noises              = [20.0, 20.0, 40.0] # average noise level for 3 ADC channels (ADC counts)
 standard_separation = 100 # required separation between two pulses in a trace (sample numbers)
+
+# input dates manually
+date_list = ['20231011/', '20231012/', '20231013/', '20231014/', '20231015/', '20231016/', '20231017/', '20231018/', 
+             '20231019/', '20231020/', '20231027/', '20231028/', '20231029/', '20231030/', '20231031/']
+
+# input DUs manually
+du_list = ['1010', '1013', '1016', '1017', '1019', '1020', '1021', '1029', '1031', '1032', '1033', '1035', '1041']
 
 ##############################
 # GET ROOT FILES AND DU LIST #
@@ -68,14 +69,14 @@ array = path_to_data_dir_split[4]
 month = path_to_data_dir_split[5]
 mode  = path_to_data_dir_split[6]
 '''
-#######################################
-# CORE FUNCTIONS TO SEARCH TRANSIENTS #
-#######################################
+####################################
+# CORE FUNCTIONS TO SEARCH WINDOWS #
+####################################
 
 def search_windows(trace, threshold, standard_separation):
     # stop if there are no transients
     exceed_threshold = np.abs(trace) > threshold
-    if not np.any(exceed_threshold):
+    if np.sum(exceed_threshold) < num_crossings:
         return []
     
     # find trace positions where threshold is exceeded
