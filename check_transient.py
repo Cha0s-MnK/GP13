@@ -23,7 +23,7 @@ start_time = time.perf_counter()
 plt.rcParams.update({'axes.labelsize': 30})
 plt.rcParams.update({'xtick.labelsize': 30})
 plt.rcParams.update({'ytick.labelsize': 30})
-plt.rcParams.update({'axes.titlesize': 50})
+plt.rcParams.update({'axes.titlesize': 30})
 plt.rcParams.update({'legend.fontsize': 30})
 
 ####################
@@ -40,8 +40,8 @@ num_threshold       = 5 # trigger threshold of the transient (times of noises)
 noises              = [20.0, 20.0, 40.0] # average noise level for 3 ADC channels (ADC counts)
 standard_separation = 100 # required separation between two pulses in a trace (sample numbers)
 
-cutoff_frequency = 30.0  #filter out what's below, in MHz
-sampling_rate = 500.0 #sample every 2 ns
+cutoff_frequency = 30  #filter out what's below, in MHz
+sampling_rate = 500 #sample every 2 ns
 
 
 #####################################
@@ -173,15 +173,17 @@ for file_id, file in enumerate(files):
             filtered_trace = high_pass_filter(traces[i], cutoff_frequency, sampling_rate)
             window = search_windows(filtered_trace, num_threshold*np.std(filtered_trace), standard_separation)
             threshold = num_threshold * np.std(filtered_trace)
-            axs[i].plot(np.arange(2048),filtered_trace,label=f'{channel} trace')
-            axs[i].axhline(y=threshold, color='r', linestyle='--', linewidth=2)
+            
+            axs[i].plot(np.arange(2048),filtered_trace)
+            axs[i].axhline(y=threshold, color='r', linestyle='--', linewidth=2, label=f'Threshold = {threshold:.2f}')
             axs[i].axhline(y=0-threshold, color='r', linestyle='--', linewidth=2)
             for w in window :
                 if w != []:
                     start, end = w[0],w[1]
                     axs[i].axvspan(start, end, color='green', alpha=0.3)
             axs[i].set_ylabel('Amplitude')
-            axs[i].legend()
+            axs[i].legend(loc='upper right')
+            axs[i].set_title(f'{channel} channel')
 
         plt.xlabel('Sample Number')
         plt.suptitle(f'DU {du} - {localtime.hour}:{localtime.minute}:{localtime.second} - threshold {num_threshold} - filter{cutoff_frequency}',fontsize = 40)
