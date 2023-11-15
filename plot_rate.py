@@ -1,49 +1,16 @@
-###################
-# IMPORT PACKAGES #
-###################
+#########################
+# CONFIGURE ENVIRONMENT #
+#########################
 
-from collections import defaultdict
-from datetime import datetime, time, timedelta
-import glob
-import itertools
-import numpy as np
-np.set_printoptions(threshold=np.inf)
-from matplotlib.lines import Line2D
-# create custom legend items
-custom_lines = [Line2D([0], [0], color='red', linestyle='dashed', lw=2),
-                Line2D([0], [0], color='orange', linestyle='dashed', lw=2)]
-import matplotlib.dates as mdates
-import matplotlib.pyplot as plt
-plt.rc('font', size=10)
-plt.rcParams["font.family"] = "Times New Roman"
-plt.rcParams["axes.labelsize"] = 14
-plt.rcParams['mathtext.default'] = 'regular'
-plt.rcParams['xtick.direction'] = 'in'
-plt.rcParams['ytick.direction'] = 'in'
-import os
-import time as wall_time
-start_time = wall_time.perf_counter()
-
-####################
-# DEFINE ARGUMENTS #
-####################
-
-channels            = ['X', 'Y', 'Z'] # make dictionaries for easier indexing
-num_samples         = 2048 # number of samples in a trace
-num_threshold       = 5 # trigger threshold of the transient (times of noises)
-standard_separation = 100 # required separation between two pulses in a trace (sample numbers)
-time_step           = 2 # time step of each sample (ns)
+# import everything from the config module
+from config import *
 
 #############################
 # GET NPZ FILES AND DU LIST #
 #############################
 
-# path of data directory containing NPZ files to plot
-data_dir      = 'result/*/'
-specific_file = '*.npz'
-
 # get all NPZ files
-file_list = sorted(glob.glob(os.path.join(data_dir, specific_file)))
+file_list = sorted(glob.glob(npz_files))
 
 # create an empty set to store unique DUs
 du_set = set()
@@ -140,7 +107,7 @@ for du in du_list:
     for id, channel in enumerate(channels):
         # reformat DunHuang hours and transient rates to plot
         hours_list[channel][du] = list(itertools.chain(*hours_list[channel][du]))
-        rates_list[channel][du] = list(itertools.chain(*rates_list[channel][du]))
+        rates_list[channel][du] = np.log10(np.array(list(itertools.chain(*rates_list[channel][du]))))
 
         # locate corresponding axis
         ax = axes[id]
@@ -211,20 +178,24 @@ for du in du_list:
 
     # set X label and Y label for entire figure
     fig.text(0.5, 0.0, 'DunHuang Time in Date and Hour', ha='center', fontsize=20)
-    fig.text(0.0, 0.5, 'Transient Rate / kHz', va='center', rotation='vertical', fontsize=20)
+    fig.text(0.0, 0.5, 'Logarithm of Transient Rate / log(kHz)', va='center', rotation='vertical', fontsize=20)
     
     # add the figure legend
     fig.legend(custom_lines, ['Sunrise', 'Sunset'], loc='upper right', fontsize=18, bbox_to_anchor=(0.98,1), bbox_transform=plt.gcf().transFigure)
 
     # add a main/super title for the entire figure
-    plt.suptitle(f'Time Evolution of Transient Rates \n DU{du}, Threshold = {num_threshold}, Separation = {standard_separation}', fontsize=24)
+    plt.suptitle(f'Time Evolution of Transient Rates \n DU{du}, Threshold = {num_threshold}, \
+                 Separation = {standard_separation}, Crossing = {num_crossings}, Cut-off frequency = {cutoff_frequency}, \
+                 Noises = [{noises[0]}, {noises[1]}, {noises[2]}]', fontsize=24)
 
     # adjust layout
     plt.tight_layout(rect=[0.01, 0.01, 0.99, 1.0])
 
     # save the figure as a PNG file
-    plt.savefig(f'plot/rate_DU{du}_threshold{num_threshold}_separation{standard_separation}.png')
-    print(f'Saved: plot/rate_DU{du}_threshold{num_threshold}_separation{standard_separation}.png')
+    rate_dir  = 'plot/rate/'
+    rate_file = f'rate_DU{du}_threshold{num_threshold}_separation{standard_separation}_crossing{num_crossings}_cutoff{cutoff_frequency}_noise{noises[0]}_{noises[1]}_{noises[2]}.png'
+    plt.savefig(os.path.join(rate_dir, rate_file))
+    print(f'Saved: {rate_dir}{rate_file}')
 
     # close the figure to free up memory
     plt.close(fig)
