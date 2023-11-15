@@ -107,7 +107,7 @@ for du in du_list:
     for id, channel in enumerate(channels):
         # reformat DunHuang hours and transient rates to plot
         hours_list[channel][du] = list(itertools.chain(*hours_list[channel][du]))
-        rates_list[channel][du] = np.log10(np.array(list(itertools.chain(*rates_list[channel][du]))))
+        rates_list[channel][du] = 1+np.array(list(itertools.chain(*rates_list[channel][du])))
 
         # locate corresponding axis
         ax = axes[id]
@@ -115,6 +115,12 @@ for du in du_list:
         # scatter points and add vertical lines to make the plot more clearly
         ax.scatter(hours_list[channel][du], rates_list[channel][du], color='blue', s=9, alpha=0.6)
         ax.vlines(hours_list[channel][du], 0, rates_list[channel][du], color='blue', linestyle='solid', linewidth=4, alpha=0.75)
+
+        # set axis scales
+        ax.set_yscale('log')
+
+        # set only the lower limit of the y-axis
+        ax.set_ylim(bottom=1)
 
         # enable gird
         ax.grid(True)
@@ -178,15 +184,13 @@ for du in du_list:
 
     # set X label and Y label for entire figure
     fig.text(0.5, 0.0, 'DunHuang Time in Date and Hour', ha='center', fontsize=20)
-    fig.text(0.0, 0.5, 'Logarithm of Transient Rate / log(kHz)', va='center', rotation='vertical', fontsize=20)
+    fig.text(0.0, 0.5, 'Transient Rate / kHz', va='center', rotation='vertical', fontsize=20)
     
     # add the figure legend
     fig.legend(custom_lines, ['Sunrise', 'Sunset'], loc='upper right', fontsize=18, bbox_to_anchor=(0.98,1), bbox_transform=plt.gcf().transFigure)
 
     # add a main/super title for the entire figure
-    plt.suptitle(f'Time Evolution of Transient Rates \n DU{du}, Threshold = {num_threshold}, \
-                 Separation = {standard_separation}, Crossing = {num_crossings}, Cut-off frequency = {cutoff_frequency}, \
-                 Noises = [{noises[0]}, {noises[1]}, {noises[2]}]', fontsize=24)
+    plt.suptitle(f'Time Evolution of Transient Rates \n DU{du}, Threshold = {num_threshold}, Separation = {standard_separation}, Crossing = {num_crossings}, Cut-off frequency = {cutoff_frequency}, Noises = [{noises[0]}, {noises[1]}, {noises[2]}]', fontsize=24)
 
     # adjust layout
     plt.tight_layout(rect=[0.01, 0.01, 0.99, 1.0])

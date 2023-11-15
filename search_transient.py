@@ -20,7 +20,8 @@ import grand.dataio.root_trees as rt
 from config import *
 
 # input dates manually
-date_list = ['20231028/']
+date_list = ['20231017/', '20231018/', 
+             '20231019/', '20231020/']
 
 ##################################
 # SEARCH TRANSIENTS IN ALL FILES #
@@ -28,7 +29,7 @@ date_list = ['20231028/']
 
 # search for time windows in 1 specific date
 def search1day(specific_date):
-    print(f'\nLoad data from {data_dir}{specific_date[:8]} and search for time windows...\n')
+    print(f'\nLoad data from {data_dir}{specific_date} and search for time windows...\n')
 
     ##############################
     # GET ROOT FILES AND DU LIST #
@@ -84,7 +85,8 @@ def search1day(specific_date):
             traces = np.array(tadc.trace_ch[0])[channel_mask]
             for channel_id, channel in enumerate(channels):
                 #windows_list[channel][du].append(search_windows(traces[channel_id], num_threshold*np.std(traces[channel_id]), standard_separation))
-                windows_list[channel][du].append(search_windows(high_pass_filter(traces[channel_id]), num_threshold*noises[channel_id], standard_separation))
+                windows_list[channel][du].append(search_windows(high_pass_filter(traces[channel_id]), 
+                                                                num_threshold*noises[channel_id], standard_separation))
             gps_times_list[du].append(trawv.gps_time[0])
 
     # loop through all DUs
@@ -94,7 +96,8 @@ def search1day(specific_date):
         npz_file = f'DU{du}_threshold{num_threshold}_separation{standard_separation}_crossing{num_crossings}_cutoff{cutoff_frequency}_noise{noises[0]}_{noises[1]}_{noises[2]}_date{specific_date[:8]}.npz'
         np.savez(os.path.join(npz_dir, specific_date, npz_file),
                  du=du,
-                 **{f'window{channel}': np.array(windows_list[channel][du], dtype=object) for channel in channels}, # convert lists to object arrays
+                 # convert lists to object arrays
+                 **{f'window{channel}': np.array(windows_list[channel][du], dtype=object) for channel in channels},
                  gps_times=gps_times_list[du])
         print(f'Saved: {npz_dir}{specific_date}{npz_file}')
 
