@@ -3,6 +3,7 @@
 ###################
 
 from collections import defaultdict
+from contextlib import contextmanager
 from datetime import datetime, time, timedelta
 import glob
 import itertools
@@ -25,6 +26,7 @@ import numpy as np
 np.set_printoptions(threshold=np.inf)
 import os
 from scipy.signal import butter, filtfilt
+from scipy.stats import norm
 import time as wall_time
 start_time = wall_time.perf_counter()
 
@@ -35,6 +37,8 @@ start_time = wall_time.perf_counter()
 channels            = ['X', 'Y', 'Z'] # make dictionaries for easier indexing
 cutoff_frequency    = 50 # cut-off frequency of the high pass filter; [MHz]
 data_dir            = 'data/' # path of data directory containing ROOT files to analyze
+filter_state        = 'off' # state of the high pass filter
+max_samples         = 512 # maximum number of samples in a transient/pulse
 num_crossings       = 3 # least number of threshold crossings in a time window
 num_samples         = 2048 # number of samples in a trace
 num_threshold       = 5 # trigger threshold of the transient
@@ -52,7 +56,7 @@ date_list = ['20231011/', '20231012/', '20231013/', '20231014/', '20231015/', '2
              '20231019/', '20231020/', '20231027/', '20231028/', '20231029/', '20231030/', '20231031/']
 
 # all/default DUs
-du_list      = [1010, '1013', '1016', 1017, 1019, 1020, 1021, 1029, '1031', 1032, '1033', 1035, '1041']
+du_list = [1010, 1013, 1016, 1017, 1019, 1020, 1021, 1029, 1031, 1032, 1033, 1035, 1041]
 
 # good DUs
 good_du_list = [1010, 1017, 1019, 1020, 1021, 1029, 1032, 1035]
@@ -96,23 +100,27 @@ noises['Z'][1035] = 62.39
 # DATA FILES AND SAVED DIRECTORIES #
 ####################################
 
-# plot transient rates
-rate_data_dir   = 'data/'
-rate_result_dir = 'result/rate/'
-rate_npz_files  = 'result/rms/*.npz'
+# search for transients/pulses
+data_dir          = 'data/'
+search_result_dir = 'result/search/'
+
+# plot transient/pulse rates
+rate_npz_files  = 'result/rate/*/*.npz'
 rate_plot_dir   = 'plot/rms/'
 
-# to analyze RMS
-rms_data_files = 'data/20231027/*.root'
-rms_dir        = 'result/rms/'
-rms_npz_files  = 'result/rms/*.npz'
-rms_plot_dir   = 'plot/rms/'
+# analyze RMS
+rms_data_files = 'data/20231012/*.root'
+rms_result_dir = 'result/rms/20231012'
+rms_npz_files  = 'result/rms/20231028/*.npz'
+rms_plot_dir   = 'plot/rms/20231028/'
 
 ####################################
 # CORE FUNCTIONS TO SEARCH WINDOWS #
 ####################################
 
-def high_pass_filter(trace):
+def high_pass_filter(trace, 
+                     sample_frequency, 
+                     cutoff_frequency):
     # Nyquist-Shannon sampling theorem: maximum frequency that can be effectively sampled without aliasing when the signal is sampled at a given rate
     Nyquist_frequency = 0.5 * sample_frequency
 
@@ -120,7 +128,18 @@ def high_pass_filter(trace):
     b, a = butter(4, cutoff_frequency / Nyquist_frequency, btype='high', analog=False)
     return filtfilt(b, a, trace)
 
-def search_windows(trace, threshold, standard_separation):
+def search_windows(trace, 
+                   threshold,
+                   filter='off',
+                   standard_separation=standard_separation,
+                   num_crossings=num_crossings,
+                   max_samples=max_samples,
+                   sample_frequency=sample_frequency, 
+                   cutoff_frequency=cutoff_frequency):
+    # apply the high-pass filter if filter is set to 'on'
+    if filter == 'on':
+        trace = high_pass_filter(trace, sample_frequency, cutoff_frequency)
+
     # stop if there are no transients
     exceed_threshold = np.abs(trace) > threshold
     if np.sum(exceed_threshold) < num_crossings:
@@ -150,8 +169,8 @@ def search_windows(trace, threshold, standard_separation):
         stop_id = crossing_ids[pulse_ids[i+1]] + half_separation
         stop_id = min(len(trace)-1, stop_id) # fix the last pulse
 
-        # check if this time window contains enough crossings
-        if np.sum(exceed_threshold[start_id:stop_id+1]) >= num_crossings:
+        # check if this time window contains enough crossings and does not exceed maximum number of samples
+        if np.sum(exceed_threshold[start_id:stop_id+1]) >= num_crossings and (stop_id - start_id + 1) <= max_samples:
             window_list.append([start_id, stop_id])
 
     return window_list
@@ -180,3 +199,17 @@ def iterative_search(trace, num_threshold, standard_separation): # not tested an
             for start_id, stop_id in cur_window_list:
                 noise_trace[start_id:stop_id+1] = 0
             noise_trace = noise_trace[noise_trace != 0]
+
+#######################
+# RECORD RUNNING TIME #
+#######################
+
+@contextmanager
+def record_run_time():
+    start_time = wall_time.perf_counter()
+    try:
+        yield
+    finally:
+        end_time = walltime.perf_counter()
+        run_time = end_time - start_time
+        print(f"\nWhole program has been executed in: {run_time:.2f} seconds")

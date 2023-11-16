@@ -1,14 +1,3 @@
-#############################################
-# SEARCH FOR TRANSIENTS IN GRAND DATA FILES #
-#############################################
-
-# GRANDLIB BRANCH: 'dev_io_root'
-# This script reads out a GRAND data file in ROOT format. It searches for transient pulses in the time traces of the data 
-# file, where each DU is treated separately. Here, a transient is defined as a pulse that exceeds 5 times the STD of the 
-# trace, called 5 sigma from this point onwards. For each trace, the number of 5 sigma transients is computed, as well as 
-# the number of times this 5 sigma threshold is exceeded during the transient. The maximum peak position of the transient is
-# also stored. All information is saved in an NPZ file for each DU.
-
 #########################
 # CONFIGURE ENVIRONMENT #
 #########################
@@ -20,15 +9,14 @@ import grand.dataio.root_trees as rt
 from config import *
 
 # input dates manually
-date_list = ['20231014/', '20231015/', '20231016/', '20231017/']
+date_list = ['20231027']
 
-##################################
-# SEARCH TRANSIENTS IN ALL FILES #
-##################################
+#############################
+# SEARCH IN A SPECIFIC DATE #
+#############################
 
-# search for time windows in 1 specific date
 def search1day(specific_date):
-    print(f'\nLoad data from {rate_data_dir}{specific_date} and search for time windows...\n')
+    print(f'\nLoad data from {data_dir}{specific_date} and search for time windows...\n')
 
     ##############################
     # GET ROOT FILES AND DU LIST #
@@ -50,7 +38,7 @@ def search1day(specific_date):
     # convert the set to a list in order
     du_list = sorted(list(du_set))
 
-    # only use good DUs
+    # only consider good DUs
     du_list = [du for du in du_list if du in good_du_list]
 
     # print the list of all used DUs
@@ -67,14 +55,14 @@ def search1day(specific_date):
         gps_times_list[du] = []
 
     # loop through all files for the current date
-    for file_id, file in enumerate(file_list):
+    for file_id, file in enumerate(file_list, 1):
         # get info of this file
         tadc        = rt.TADC(file)
         trawv       = rt.TRawVoltage(file)
         num_entries = tadc.get_number_of_entries()
 
         # loop through all entries in this file (1 event corresponds to several entries)
-        print(f'Loop through the {file_id+1}/{num_files} file with {num_entries} entries: \n{file}')
+        print(f'Loop through the {file_id}/{num_files} file with {num_entries} entries: \n{file}')
         for entry in range(num_entries):
             # get info of this entry
             tadc.get_entry(entry)
@@ -88,27 +76,33 @@ def search1day(specific_date):
             # get traces and search transients
             traces = np.array(tadc.trace_ch[0])[channel_mask]
             for channel_id, channel in enumerate(channels):
-                #windows_list[channel][du].append(search_windows(traces[channel_id], num_threshold*np.std(traces[channel_id]), standard_separation))
-                windows_list[channel][du].append(search_windows(high_pass_filter(traces[channel_id]), 
-                                                                num_threshold*noises[channel][du], standard_separation))
+                window_list = search_windows(trace=traces[channel_id], 
+                                             threshold=num_threshold*noises[channel][du], 
+                                             filter=filter_state)
+                windows_list[channel][du].append(window_list)
             gps_times_list[du].append(trawv.gps_time[0])
 
     # loop through all DUs
     for du in du_list:
-        # save all info into a NPZ file
-        rate_result_name = f'DU{du}_threshold{num_threshold}_separation{standard_separation}_crossing{num_crossings}_cutoff{cutoff_frequency}.npz'
-        rate_result_file = os.path.join(rate_result_dir, specific_date, rate_result_name)
-        np.savez(rate_result_file,
+        # save all information into a NPZ file
+        search_result_name = f'DU{du}_threshold{num_threshold}_separation{standard_separation}_crossing{num_crossings}_sample{num_samples}_frequency{sample_frequency}_cutoff{cutoff_frequency}_date{specific_date[:8]}.npz'
+        search_result_file = os.path.join(search_result_dir, specific_date, search_result_name)
+        np.savez(search_result_file,
                  # convert lists to object arrays
                  **{f'windows_list{channel}': np.array(windows_list[channel][du], dtype=object) for channel in channels},
                  gps_times=gps_times_list[du])
-        print(f'Saved: {rate_result_file}')
+        print(f'Saved: {search_result_file}')
 
-# loop through all dates
-for specific_date in date_list:
-    search1day(specific_date)
+#################
+# MAIN FUNCTION #
+#################
 
-# record the running time
-end_time = wall_time.perf_counter()
-run_time = end_time - start_time
-print(f"\nWhole program executed in: {run_time} seconds")
+def main():
+    # loop through all dates
+    for specific_date in date_list:
+        search1day(specific_date)
+    pass
+
+if __name__ == "__main__":
+    with record_run_time():
+        main()
