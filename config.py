@@ -108,11 +108,48 @@ search_result_dir = 'result/search/'
 rate_npz_files  = 'result/rate/*/*.npz'
 rate_plot_dir   = 'plot/rms/'
 
+# get mean FFTs for each DU
+#specific_file       = 'GRAND.TEST-RAW-10s-ChanXYZ_20dB_11DUs_RUN80_test.20231028121653.161_dat.root'
+specific_file       = 'GRAND.TEST-RAW-10s-ChanXYZ_20dB_11DUs_RUN80_test.20231028001953.141_dat.root'
+
 # analyze RMS
 rms_data_files = 'data/20231012/*.root'
 rms_result_dir = 'result/rms/20231012'
 rms_npz_files  = 'result/rms/20231028/*.npz'
 rms_plot_dir   = 'plot/rms/20231028/'
+
+##############################
+# GET ROOT FILES AND DU LIST #
+##############################
+
+def get_root_du(file_path):
+    # enable GRANDLIB
+    import grand.dataio.root_trees as rt
+    
+    # get ROOT files and their information
+    file_list = sorted(glob.glob(file_path))
+    num_files = len(file_list)
+
+    # create an empty set to store unique DUs
+    du_set = set()
+
+    # loop through all files to get used DUs
+    for file in file_list:
+        tadc = rt.TADC(file) # initiate TADC tree of this file
+        tadc.get_entry(0) # get the entry from this file
+        du_set.update(tadc.get_list_of_all_used_dus()) # update the set with all used DUs from this file
+
+    # convert the set to a list in order
+    du_list = sorted(list(du_set))
+
+    # only consider good DUs
+    du_list = [du for du in du_list if du in good_du_list]
+
+    # print the list of all used good DUs
+    print(f'\nROOT files contain data from following good DUs: \n{du_list}\n')
+
+    # return ROOT files, number of ROOT files and DUs
+    return file_list, num_files, du_list
 
 ####################################
 # CORE FUNCTIONS TO SEARCH WINDOWS #
@@ -210,6 +247,6 @@ def record_run_time():
     try:
         yield
     finally:
-        end_time = walltime.perf_counter()
+        end_time = wall_time.perf_counter()
         run_time = end_time - start_time
         print(f"\nWhole program has been executed in: {run_time:.2f} seconds")
