@@ -35,7 +35,6 @@ start_time = wall_time.perf_counter()
 channels            = ['X', 'Y', 'Z'] # make dictionaries for easier indexing
 cutoff_frequency    = 50 # cut-off frequency of the high pass filter; [MHz]
 data_dir            = 'data/' # path of data directory containing ROOT files to analyze
-npz_files           = 'result/*/*.npz' # path of all NPZ files to plot
 num_crossings       = 3 # least number of threshold crossings in a time window
 num_samples         = 2048 # number of samples in a trace
 num_threshold       = 5 # trigger threshold of the transient
@@ -53,7 +52,61 @@ date_list = ['20231011/', '20231012/', '20231013/', '20231014/', '20231015/', '2
              '20231019/', '20231020/', '20231027/', '20231028/', '20231029/', '20231030/', '20231031/']
 
 # all/default DUs
-du_list = ['1010', '1013', '1016', '1017', '1019', '1020', '1021', '1029', '1031', '1032', '1033', '1035', '1041']
+du_list      = [1010, '1013', '1016', 1017, 1019, 1020, 1021, 1029, '1031', 1032, '1033', 1035, '1041']
+
+# good DUs
+good_du_list = [1010, 1017, 1019, 1020, 1021, 1029, 1032, 1035]
+
+# make a dictionary to store average noise level
+noises = {channel: {} for channel in channels}
+
+noises['X'][1010] = 20.93
+noises['Y'][1010] = 29.84
+noises['Z'][1010] = 53.79
+
+noises['X'][1017] = 30.42
+noises['Y'][1017] = 20.58
+noises['Z'][1017] = 48.43
+
+noises['X'][1019] = 31.25
+noises['Y'][1019] = 24.55
+noises['Z'][1019] = 67.11
+
+noises['X'][1020] = 39.21
+noises['Y'][1020] = 24.66
+noises['Z'][1020] = 53.13
+
+noises['X'][1021] = 33.70
+noises['Y'][1021] = 32.39
+noises['Z'][1021] = 88.26
+
+noises['X'][1029] = 23.40
+noises['Y'][1029] = 18.47
+noises['Z'][1029] = 44.61
+
+noises['X'][1032] = 42.08
+noises['Y'][1032] = 40.57
+noises['Z'][1032] = 105.35
+
+noises['X'][1035] = 29.69
+noises['Y'][1035] = 25.83
+noises['Z'][1035] = 62.39
+
+####################################
+# DATA FILES AND SAVED DIRECTORIES #
+####################################
+
+# plot transient rates
+rate_data_dir   = 'data/'
+rate_result_dir = 'result/rate/'
+rate_npz_files  = 'result/rms/*.npz'
+rate_plot_dir   = 'plot/rms/'
+
+# to analyze RMS
+rms_data_files = 'data/20231027/*.root'
+rms_dir        = 'result/rms/'
+rms_npz_files  = 'result/rms/*.npz'
+rms_plot_dir   = 'plot/rms/'
 
 ####################################
 # CORE FUNCTIONS TO SEARCH WINDOWS #
