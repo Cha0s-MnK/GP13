@@ -40,8 +40,11 @@ num_threshold       = 5 # trigger threshold of the transient (times of noises)
 noises              = [20.0, 20.0, 40.0] # average noise level for 3 ADC channels (ADC counts)
 standard_separation = 100 # required separation between two pulses in a trace (sample numbers)
 
-cutoff_frequency = 30  #filter out what's below, in MHz
+cutoff_frequency = 50  #filter out what's below, in MHz
 sampling_rate = 500 #sample every 2 ns
+
+savedir = f'check_transients/{specific_date}-{num_threshold}-filter{cutoff_frequency}-fixed_threshold/'
+noise_std={'X': {1010: [20.926763387021786], 1013: [20.952769407652788], 1017: [30.420557595398154], 1019: [31.251764986602122], 1020: [39.20736757315074], 1021: [33.69849808444249], 1029: [23.398724452600764], 1031: [13.720271338850445], 1032: [42.078593245854876], 1035: [29.689793907938558], 1041: [21.565723363103153]}, 'Y': {1010: [29.840661121575035], 1013: [3.8989353475865354], 1017: [20.582404699047263], 1019: [24.552383973648375], 1020: [24.662734272132926], 1021: [32.39328635116196], 1029: [18.473454713703372], 1031: [10.889069808825974], 1032: [40.57416125084704], 1035: [25.830265703784463], 1041: [18.44814974601915]}, 'Z': {1010: [53.793096426413875], 1013: [24.10016059809763], 1017: [48.43384993678834], 1019: [67.11270359489555], 1020: [53.12673106678183], 1021: [88.25538450900173], 1029: [44.610852790839814], 1031: [17.468571492351703], 1032: [105.34663667770421], 1035: [62.389362894626565], 1041: [37.10939572543815]}}
 
 
 #####################################
@@ -114,6 +117,18 @@ def search_windows(trace, threshold, standard_separation):
 
     return window_list
 
+def calculate_background_std(trace, windows):
+    # Create a mask to exclude data within transient windows
+    mask = np.ones_like(trace, dtype=bool)
+    for w in windows:
+        if w != []:
+            start, end = w[0], w[1]
+            mask[start:end + 1] = False
+
+    # Calculate standard deviation excluding data within transient windows
+    background_std = np.std(trace[mask])
+    return background_std
+
 #########################################
 # COMPUTE AND PLOT MEAN PSD FOR EACH DU #
 #########################################
@@ -140,8 +155,8 @@ channels  = ['X', 'Y', 'Z']
 traces_all = {channel: {} for channel in channels}
 windows = {channel: {} for channel in channels}
 gps_times = {}
-savedir = f'check_transients/{specific_date}-{num_threshold}-filter{cutoff_frequency}/'
 num_files = len(files)
+
 
 for file_id, file in enumerate(files):
     # get info of this file
@@ -170,13 +185,22 @@ for file_id, file in enumerate(files):
         # get traces and search transients
         traces = np.array(tadc.trace_ch[0])[mask_channel]
         for i, channel in enumerate(channels):
+            #first search
             filtered_trace = high_pass_filter(traces[i], cutoff_frequency, sampling_rate)
-            window = search_windows(filtered_trace, num_threshold*np.std(filtered_trace), standard_separation)
-            threshold = num_threshold * np.std(filtered_trace)
+            fixed_threshold = num_threshold*noise_std[channel][du][0]
+            window = search_windows(filtered_trace, fixed_threshold, standard_separation)
+            #threshold = num_threshold * np.std(filtered_trace)
             
+            # Calculate background std excluding data within transient windows
+            background_std = calculate_background_std(filtered_trace, window)
+            
+            #second search
+            #window2 = search_windows(filtered_trace, num_threshold * background_std, standard_separation)
+            #threshold_bg = num_threshold * background_std
+
             axs[i].plot(np.arange(2048),filtered_trace)
-            axs[i].axhline(y=threshold, color='r', linestyle='--', linewidth=2, label=f'Threshold = {threshold:.2f}')
-            axs[i].axhline(y=0-threshold, color='r', linestyle='--', linewidth=2)
+            axs[i].axhline(y=fixed_threshold, color='r', linestyle='--', linewidth=2, label=f'Threshold = {fixed_threshold:.2f}')
+            axs[i].axhline(y=0-fixed_threshold, color='r', linestyle='--', linewidth=2)
             for w in window :
                 if w != []:
                     start, end = w[0],w[1]
@@ -186,9 +210,9 @@ for file_id, file in enumerate(files):
             axs[i].set_title(f'{channel} channel')
 
         plt.xlabel('Sample Number')
-        plt.suptitle(f'DU {du} - {localtime.hour}:{localtime.minute}:{localtime.second} - threshold {num_threshold} - filter{cutoff_frequency}',fontsize = 40)
-        plt.savefig(f'{savedir}DU{du}_threshold{num_threshold}_{localtime.hour}:{localtime.minute}:{localtime.second} - filter{cutoff_frequency}.png')
-        print(f'saved fig:{savedir}DU{du}_threshold{num_threshold}_{localtime.hour}:{localtime.minute}:{localtime.second}_filter{cutoff_frequency}.png')
+        plt.suptitle(f'DU {du} - {localtime.hour}:{localtime.minute}:{localtime.second} - filter{cutoff_frequency} - fixed threshold',fontsize = 40)
+        plt.savefig(f'{savedir}DU{du}_{localtime.hour}:{localtime.minute}:{localtime.second}_filter{cutoff_frequency}_fixthreshold.png')
+        print(f'saved fig:{savedir}DU{du}_{localtime.hour}:{localtime.minute}:{localtime.second}_filter{cutoff_frequency}_fixthreshold.png')
         plt.close()
 
 
