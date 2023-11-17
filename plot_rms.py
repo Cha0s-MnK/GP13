@@ -22,11 +22,14 @@ for file in file_list:
     print(basename)
     
     # split the filename on underscore
-    du = basename.split('_')[0][2:]
+    du = int(basename.split('_')[0][2:])
     du_set.add(du)
 
 # convert the set to a list in order
 du_list = sorted(list(du_set))
+
+# only consider good DUs
+du_list = [du for du in du_list if du in good_du_list]
 
 # print the list of all used DUs
 print(f'\nNPZ files contain data from following DUs: \n{du_list}\n')
@@ -43,18 +46,47 @@ for du in du_list:
     data         = np.load(rms_npz_file, allow_pickle=True)
     
     # create a figure and adjust figure size
-    plt.figure(figsize=(36, 12), dpi=256)
-    plt.suptitle(f'Noise Distribution of DU{du}')
+    fig = plt.figure(figsize=(12, 20), dpi=256)
+    fig.suptitle(f'Noise Distribution of DU{du}', fontsize=20)
     
     # plot a histogram for each channel in subfigures
     for id, channel in enumerate(channels, 1):
-        plt.subplot(3, 1, id)  # 3 rows, 1 column layout
-        plt.hist(data[f'noise_list{channel}'], bins=50, alpha=0.75, label=f'Channel {channel}')
-        plt.xlabel('Noise value')
-        plt.ylabel('Frequency')
-        plt.title(f'Channel {channel}', fontsize=20)
-        plt.legend()
+        # create a 3 rows, 1 column layout
+        ax = plt.subplot(3, 1, id)
+
+        # extract the noise data for the channel
+        noise_channel = data[f'noise_list{channel}']
+
+        # plot the histogram and calculate the parameters
+        count, bins, ignored = ax.hist(noise_channel, bins=100, density=True, color='blue', alpha=0.75, label=f'Channel {channel}')
     
+        # plot a Gaussian distribution compared with the noise data
+        sigma = np.std(noise_channel)
+        normal_distribution = norm.pdf(bins, 0, sigma)
+        ax.plot(bins, normal_distribution, linewidth=2, color='r', label=f'Gaussian (sigma={sigma:.2f})')
+
+        # determine the range for X-ticks and set the X-ticks symmetrically around 0
+        max_abs_value = max(abs(noise_channel.max()), abs(noise_channel.min()))
+        Xtick_step = max_abs_value / 6
+        Xticks = np.arange(-max_abs_value, max_abs_value + Xtick_step, Xtick_step)
+        ax.set_xticks(Xticks)
+
+        # enable the grid
+        ax.grid(True)
+
+        # set individual title on the right-hand side
+        ax.text(1.01, 0.5, f'Channel {channel}', verticalalignment='center', horizontalalignment='left', transform=ax.transAxes, fontsize=18, rotation=-90)
+
+        # enable the legend
+        ax.legend()
+    
+    # add common X and Y labels
+    fig.text(0.5, 0.04, 'Noise Value / ADC Counts', ha='center', va='center', fontsize=16)
+    fig.text(0.04, 0.5, 'Probability Density', ha='center', va='center', rotation='vertical', fontsize=16)
+
+    # adjust layout: left, bottom, right, top
+    plt.tight_layout(rect=[0.04, 0.04, 1.0, 1.0]) 
+
     # save the figure as a PNG file
     rms_png_name = f'rms_DU{du}_threshold{num_threshold}_separation{standard_separation}_crossing{num_crossings}_cutoff{cutoff_frequency}.png'
     rms_png_file = os.path.join(rms_plot_dir, rms_png_name)
