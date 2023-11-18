@@ -13,9 +13,8 @@ custom_lines = [Line2D([0], [0], color='red', linestyle='dashed', lw=2),
                 Line2D([0], [0], color='orange', linestyle='dashed', lw=2)]
 import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
-plt.rc('font', size=10)
 plt.rcParams["font.family"] = "Times New Roman"
-plt.rcParams["axes.labelsize"] = 14
+plt.rcParams["axes.labelsize"] = 16
 plt.rcParams["axes.titlesize"] = 18
 plt.rcParams['mathtext.default'] = 'regular'
 plt.rcParams['xtick.direction'] = 'in'
@@ -25,6 +24,7 @@ plt.rcParams['ytick.labelsize'] = 12
 import numpy as np
 np.set_printoptions(threshold=np.inf)
 import os
+import re
 from scipy.signal import butter, filtfilt
 from scipy.stats import norm
 import time as wall_time
@@ -36,17 +36,16 @@ start_time = wall_time.perf_counter()
 
 channels            = ['X', 'Y', 'Z'] # make dictionaries for easier indexing
 cutoff_frequency    = 50 # cut-off frequency of the high pass filter; [MHz]
-data_dir            = 'data/' # path of data directory containing ROOT files to analyze
-filter_state        = 'off' # state of the high pass filter
 max_samples         = 512 # maximum number of samples in a transient/pulse
-num_crossings       = 3 # least number of threshold crossings in a time window
+num_crossings       = 2 # least number of threshold crossings in a time window
 num_samples         = 2048 # number of samples in a trace
 num_threshold       = 5 # trigger threshold of the transient
-noises              = [25.0, 25.0, 55.0] # average noise level for 3 ADC channels; [ADC counts]
-result_dir          = 'result/' # path of result directory containing NPZ files to plot
-sample_frequency    = 500 # sampling frequency in each trace; [MHz]
-standard_separation = 100 # required separation between closest threshold crossings in two pulses; [#sample]
-time_step           = 2 # time step of each sample; [ns]
+sample_frequency    = 500 # sampling frequency in each trace [MHz]
+standard_separation = 100 # required separation between closest threshold crossings in two pulses [#sample]
+time_step           = 2 # time step of each sample [ns]
+
+fft_frequency = np.fft.rfftfreq(num_samples) * sample_frequency # frequencies of the FFT [MHz]
+time_axis     = np.arange(num_samples) * time_step # time axis of a trace
 
 # mask channels to disable channel 0 for GP13 data
 channel_mask = np.array([False, True, True, True])
@@ -62,39 +61,11 @@ du_list = [1010, 1013, 1016, 1017, 1019, 1020, 1021, 1029, 1031, 1032, 1033, 103
 good_du_list = [1010, 1017, 1019, 1020, 1021, 1029, 1032, 1035]
 
 # make a dictionary to store average noise level
-noises = {channel: {} for channel in channels}
-
-noises['X'][1010] = 20.93
-noises['Y'][1010] = 29.84
-noises['Z'][1010] = 53.79
-
-noises['X'][1017] = 30.42
-noises['Y'][1017] = 20.58
-noises['Z'][1017] = 48.43
-
-noises['X'][1019] = 31.25
-noises['Y'][1019] = 24.55
-noises['Z'][1019] = 67.11
-
-noises['X'][1020] = 39.21
-noises['Y'][1020] = 24.66
-noises['Z'][1020] = 53.13
-
-noises['X'][1021] = 33.70
-noises['Y'][1021] = 32.39
-noises['Z'][1021] = 88.26
-
-noises['X'][1029] = 23.40
-noises['Y'][1029] = 18.47
-noises['Z'][1029] = 44.61
-
-noises['X'][1032] = 42.08
-noises['Y'][1032] = 40.57
-noises['Z'][1032] = 105.35
-
-noises['X'][1035] = 29.69
-noises['Y'][1035] = 25.83
-noises['Z'][1035] = 62.39
+noises = {
+    'X': {1010: 20.93, 1017: 30.42, 1019: 31.25, 1020: 39.21, 1021: 33.70, 1029: 23.40, 1032: 42.08, 1035: 29.69},
+    'Y': {1010: 29.84, 1017: 20.58, 1019: 24.55, 1020: 24.66, 1021: 32.39, 1029: 18.47, 1032: 40.57, 1035: 25.83},
+    'Z': {1010: 53.79, 1017: 48.43, 1019: 67.11, 1020: 53.13, 1021: 88.26, 1029: 44.61, 1032: 105.35, 1035: 62.39}
+}
 
 ####################################
 # DATA FILES AND SAVED DIRECTORIES #
@@ -109,8 +80,18 @@ rate_npz_files  = 'result/rate/*/*.npz'
 rate_plot_dir   = 'plot/rms/'
 
 # get mean FFTs for each DU
-#specific_file       = 'GRAND.TEST-RAW-10s-ChanXYZ_20dB_11DUs_RUN80_test.20231028121653.161_dat.root'
-specific_file       = 'GRAND.TEST-RAW-10s-ChanXYZ_20dB_11DUs_RUN80_test.20231028001953.141_dat.root'
+fft_result_dir = 'result/fft_old/'
+
+# plot mean FFTs for each DU
+fft_plot_dir = 'plot/fft/'
+
+# check.py
+good_du          = 1010
+check_result_dir = 'result/check/'
+
+# plot_check.py
+check_plot_files = 'result/check/*.npz'
+check_plot_dir   = 'plot/check/'
 
 # analyze RMS
 rms_data_files = 'data/20231012/*.root'
@@ -125,10 +106,9 @@ rms_plot_dir   = 'plot/rms/20231028/'
 def get_root_du(file_path):
     # enable GRANDLIB
     import grand.dataio.root_trees as rt
-    
-    # get ROOT files and their information
+
+    # get ROOT files
     file_list = sorted(glob.glob(file_path))
-    num_files = len(file_list)
 
     # create an empty set to store unique DUs
     du_set = set()
@@ -148,8 +128,73 @@ def get_root_du(file_path):
     # print the list of all used good DUs
     print(f'\nROOT files contain data from following good DUs: \n{du_list}\n')
 
-    # return ROOT files, number of ROOT files and DUs
-    return file_list, num_files, du_list
+    # return ROOT files and DUs
+    return file_list, du_list
+
+#############################
+# GET NPZ FILES AND DU LIST #
+#############################
+
+def get_npz_du(files):
+    # get NPZ files
+    file_list = sorted(glob.glob(files))
+
+    # create an empty set to store unique DUs
+    du_set = set()
+
+    # show all NPZ files and extract DUs
+    print('\nPlot with data from following NPZ files:\n')
+    for file in file_list:
+        basename = os.path.basename(file)
+        print(basename)
+    
+        # split the filename on underscore
+        du = int(basename.split('_')[0][2:])
+        du_set.add(du)
+
+    # convert the set to a list in order
+    du_list = sorted(list(du_set))
+
+    # only consider good DUs
+    du_list = [du for du in du_list if du in good_du_list]
+
+    # print the list of all used DUs
+    print(f'\nNPZ files contain data from following DUs: \n{du_list}\n')
+
+    # return NPZ files and DUs
+    return file_list, du_list
+
+#################################
+# GET DATE AND TIME FROM A FILE #
+#################################
+
+def get_root_datetime(filename):
+    # assume all filenames have the same pattern
+    datetime_str  = filename.split('test.')[1].split('.')[0]
+    date_time     = datetime.strptime(datetime_str, '%Y%m%d%H%M%S')
+    datetime_flat = date_time.strftime('%Y%m%d%H%M%S')
+    return datetime_flat
+
+def get_npz_datetime(basename):
+    # assume all NPZ filenames have the same pattern
+    datetime_str = basename.split('.')[0].split('_')[-1]
+    date_time = datetime.strptime(datetime_str, '%Y%m%d%H%M%S')
+    datetime_flat = date_time.strftime('%Y%m%d%H%M%S')
+    return date_time, datetime_flat
+
+###########################
+# CONVERT GPS TIME TO UTC #
+###########################
+
+# GPS time = UTC + 18s at present
+def gps2utc(gps_times):
+    gps2utc_v = np.vectorize(gps2utc1) # vectorize the helper function
+    return gps2utc_v(gps_times)
+
+# a helper function
+def gps2utc1(gps_time):
+    leap_seconds = 18 # number of leap seconds since Jan 6th 1980
+    return datetime.utcfromtimestamp(gps_time - leap_seconds)
 
 ####################################
 # CORE FUNCTIONS TO SEARCH WINDOWS #
