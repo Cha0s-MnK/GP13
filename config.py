@@ -15,9 +15,9 @@ plt.rcParams["axes.labelsize"] = 16
 plt.rcParams["axes.titlesize"] = 18
 plt.rcParams['mathtext.default'] = 'regular'
 plt.rcParams['xtick.direction'] = 'in'
-plt.rcParams['xtick.labelsize'] = 12
+plt.rcParams['xtick.labelsize'] = 14
 plt.rcParams['ytick.direction'] = 'in'
-plt.rcParams['ytick.labelsize'] = 12
+plt.rcParams['ytick.labelsize'] = 14
 import numpy as np
 np.set_printoptions(threshold=np.inf)
 import os
@@ -31,11 +31,11 @@ start_time = wall_time.perf_counter()
 # DEFINE ARGUMENTS #
 ####################
 
-adcu2v              = 0.9 / 1892 # convert from ADC units back to volts
+adcu2v              = 1.8 / 16384 # convert from ADC units back to Volts
 channels            = ['X', 'Y', 'Z'] # make dictionaries for easier indexing
 cutoff_frequency    = 50 # cut-off frequency of the high pass filter [MHz]
 fluctuation         = 1.5 # tolerance of abnormal fluctuation
-linear_gain         = np.sqrt(10) # system's linear gain 
+linear_gain         = 10 # system's linear gain 
 max_samples         = 512 # maximum number of samples in a transient/pulse
 num_crossings       = 2 # least number of threshold crossings in a time window
 num_samples         = 2048 # number of samples in a trace
@@ -60,7 +60,7 @@ du_list = [1010, 1013, 1016, 1017, 1019, 1020, 1021, 1029, 1031, 1032, 1033, 103
 
 # good DUs
 good_du_list = [1010, 1017, 1019, 1020, 1021, 1029, 1032, 1035]
-#good_du_list = [1013, 1016, 1031, 1041]
+good_du_list = [1010, 1013, 1016, 1017, 1019, 1020, 1021, 1029, 1031, 1032, 1033, 1035, 1041]
 
 # make a dictionary to store average noise level
 noises = {
@@ -83,13 +83,10 @@ search_data_dir   = 'data/'
 search_result_dir = 'result/search/'
 
 # plot_rate.py
-custom_sun = [Line2D([0], [0], color='red', linestyle='dashed', lw=2), # create custom legend items
-              Line2D([0], [0], color='orange', linestyle='dashed', lw=2)]
+custom_sun      = [Line2D([0], [0], color='red', linestyle='dashed', lw=2), # create custom legend items
+                   Line2D([0], [0], color='orange', linestyle='dashed', lw=2)]
 rate_plot_files = 'result/search/*/*.npz'
-rate_plot_dir  = 'plot/rate/'
-
-# get mean FFTs for each DU
-fft_result_dir = 'result/fft_old/'
+rate_plot_dir   = 'plot/rate/'
 
 # plot mean FFTs for each DU
 fft_plot_dir = 'plot/fft/'
@@ -106,7 +103,7 @@ check_plot_dir   = 'plot/check/20231014/'
 # plot_fft.py
 galaxy_sim_dir  = 'data/galaxy/'
 galaxy_sim_name = ['VoutRMS2_NSgalaxy.npy', 'VoutRMS2_EWgalaxy.npy', 'VoutRMS2_Zgalaxy.npy']
-compare_plot_dir = 'plot/compare/'
+fft_plot_dir    = 'plot/fft/'
 
 # analyze RMS
 rms_data_files = 'data/20231012/*.root'
@@ -146,7 +143,10 @@ def get_root_du(files):
     # return DUs
     return du_list
 
-def get_npz_du(file_list):
+def get_npz_du(files):
+    # get NPZ files
+    file_list = sorted(glob(files))
+
     # create an empty set to store unique DUs
     du_set = set()
 
@@ -172,11 +172,9 @@ def get_npz_du(file_list):
     # return DUs
     return du_list
 
-########
-# TIME #
-########
-
-# GET DATE AND TIME FROM A FILE #
+###########################
+# GET TIME AND CONVERT IT #
+###########################
 
 def get_root_datetime(filename):
     # assume all ROOT filenames have the same pattern
@@ -187,21 +185,21 @@ def get_root_datetime(filename):
 
 def get_npz_datetime(basename):
     # assume all NPZ filenames have the same pattern
-    datetime_str = basename.split('.')[0].split('_')[-1]
-    date_time = datetime.strptime(datetime_str, '%Y%m%d%H%M%S')
+    datetime_str  = basename.split('.')[0].split('_')[-1]
+    date_time     = datetime.strptime(datetime_str, '%Y%m%d%H%M%S')
     datetime_flat = date_time.strftime('%Y%m%d%H%M%S')
     return date_time, datetime_flat
 
-# CONVERT GPS TIME TO UTC #
-
-# GPS time = UTC + 18s at present
+# convert GPS time to UTC
 def gps2utc(gps_times):
-    gps2utc_v = np.vectorize(gps2utc1) # vectorize the helper function
+    # vectorize the helper function
+    gps2utc_v = np.vectorize(gps2utc1)
     return gps2utc_v(gps_times)
 
 # a helper function
 def gps2utc1(gps_time):
-    leap_seconds = 18 # number of leap seconds since Jan 6th 1980
+    # GPS time = UTC + 18s at present
+    leap_seconds = 18
     return datetime.utcfromtimestamp(gps_time - leap_seconds)
 
 ###########################

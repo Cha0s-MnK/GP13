@@ -60,8 +60,13 @@ def search(file_list, du_list, specific_date):
 
     # loop through all DUs
     for du in du_list:
+        # create the saved directory if it does not exist
+        os.makedirs(os.path.join(search_result_dir, specific_date), exist_ok=True)
+
         # save all information into a NPZ file
-        search_result_name = f'search_DU{du}_threshold{num_threshold}_separation{standard_separation}_crossing{num_crossings}_max{max_samples}_fluctuation{fluctuation}_frequency{sample_frequency}_cutoff{cutoff_frequency}_{specific_date[:8]}.npz'
+        search_result_name = f'search_DU{du}_threshold{num_threshold}_separation{standard_separation}' \
+                             f'_crossing{num_crossings}_max{max_samples}_fluctuation{fluctuation}' \
+                             f'_frequency{sample_frequency}_cutoff{cutoff_frequency}_{specific_date[:8]}.npz'
         search_result_file = os.path.join(search_result_dir, specific_date, search_result_name)
         np.savez(search_result_file,
                  # convert lists to object arrays
@@ -75,11 +80,17 @@ def search(file_list, du_list, specific_date):
 #################
 
 def main():
+    # all/default dates
+    date_list = ['20231011/', '20231012/', '20231013/', '20231014/', '20231015/', '20231016/', '20231017/', '20231018/', 
+                 '20231019/', '20231020/', '20231021/', '20231022/', '20231027/', '20231028/', '20231029/', '20231030/', 
+                 '20231031/']
+    
     # input dates manually
-    date_list = ['20231018/', '20231019/', '20231020/']
+    date_list = ['20231022/']
 
     # loop through all dates
     for specific_date in date_list:
+        # data is stored by date in directory like data/YYYYMMDD/
         print(f'\nLoad data from {search_data_dir}{specific_date} and search for time windows...\n')
 
         # update file path according to current date
