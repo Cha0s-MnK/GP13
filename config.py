@@ -5,12 +5,9 @@
 from collections import defaultdict
 from contextlib import contextmanager
 from datetime import datetime, time, timedelta
-import glob
+from glob import glob
 import itertools
 from matplotlib.lines import Line2D
-# create custom legend items
-custom_lines = [Line2D([0], [0], color='red', linestyle='dashed', lw=2),
-                Line2D([0], [0], color='orange', linestyle='dashed', lw=2)]
 import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
 plt.rcParams["font.family"] = "Times New Roman"
@@ -35,13 +32,14 @@ start_time = wall_time.perf_counter()
 ####################
 
 channels            = ['X', 'Y', 'Z'] # make dictionaries for easier indexing
-cutoff_frequency    = 50 # cut-off frequency of the high pass filter; [MHz]
+cutoff_frequency    = 50 # cut-off frequency of the high pass filter [MHz]
+fluctuation         = 1.5 # tolerance of abnormal fluctuation
 max_samples         = 512 # maximum number of samples in a transient/pulse
 num_crossings       = 2 # least number of threshold crossings in a time window
 num_samples         = 2048 # number of samples in a trace
 num_threshold       = 5 # trigger threshold of the transient
 sample_frequency    = 500 # sampling frequency in each trace [MHz]
-standard_separation = 100 # required separation between closest threshold crossings in two pulses [#sample]
+standard_separation = 50 # required separation between closest threshold crossings in two pulses [#sample]
 time_step           = 2 # time step of each sample [ns]
 
 fft_frequency = np.fft.rfftfreq(num_samples) * sample_frequency # frequencies of the FFT [MHz]
@@ -52,7 +50,8 @@ channel_mask = np.array([False, True, True, True])
 
 # all/default dates
 date_list = ['20231011/', '20231012/', '20231013/', '20231014/', '20231015/', '20231016/', '20231017/', '20231018/', 
-             '20231019/', '20231020/', '20231027/', '20231028/', '20231029/', '20231030/', '20231031/']
+             '20231019/', '20231020/', '20231021/', '20231022/', '20231027/', '20231028/', '20231029/', '20231030/', 
+             '20231031/']
 
 # all/default DUs
 du_list = [1010, 1013, 1016, 1017, 1019, 1020, 1021, 1029, 1031, 1032, 1033, 1035, 1041]
@@ -62,22 +61,29 @@ good_du_list = [1010, 1017, 1019, 1020, 1021, 1029, 1032, 1035]
 
 # make a dictionary to store average noise level
 noises = {
-    'X': {1010: 20.93, 1017: 30.42, 1019: 31.25, 1020: 39.21, 1021: 33.70, 1029: 23.40, 1032: 42.08, 1035: 29.69},
-    'Y': {1010: 29.84, 1017: 20.58, 1019: 24.55, 1020: 24.66, 1021: 32.39, 1029: 18.47, 1032: 40.57, 1035: 25.83},
-    'Z': {1010: 53.79, 1017: 48.43, 1019: 67.11, 1020: 53.13, 1021: 88.26, 1029: 44.61, 1032: 105.35, 1035: 62.39}
+    'X': {1010: 30, 1017: 30.42, 1019: 31.25, 1020: 39.21, 1021: 33.70, 1029: 23.40, 1032: 42.08, 1035: 29.69},
+    'Y': {1010: 30, 1017: 20.58, 1019: 24.55, 1020: 24.66, 1021: 32.39, 1029: 18.47, 1032: 40.57, 1035: 25.83},
+    'Z': {1010: 60, 1017: 48.43, 1019: 67.11, 1020: 53.13, 1021: 88.26, 1029: 44.61, 1032: 105.35, 1035: 62.39}
 }
 
-####################################
-# DATA FILES AND SAVED DIRECTORIES #
-####################################
+noisesX = {du: 30 for du in good_du_list}
+noisesY = {du: 30 for du in good_du_list}
+noisesZ = {du: 75 for du in good_du_list}
+noises = {'X': noisesX, 'Y': noisesY, 'Z': noisesZ}
 
-# search for transients/pulses
-data_dir          = 'data/'
+########################################
+# DEFINE ARGUMENTS FOR SPECIFIC SCRIPT #
+########################################
+
+# search.py
+search_data_dir   = 'data/'
 search_result_dir = 'result/search/'
 
-# plot transient/pulse rates
-rate_npz_files  = 'result/rate/*/*.npz'
-rate_plot_dir   = 'plot/rms/'
+# plot_rate.py
+custom_sun = [Line2D([0], [0], color='red', linestyle='dashed', lw=2), # create custom legend items
+              Line2D([0], [0], color='orange', linestyle='dashed', lw=2)]
+rate_plot_files = 'result/search/*/*.npz'
+rate_plot_dir  = 'plot/rate/'
 
 # get mean FFTs for each DU
 fft_result_dir = 'result/fft_old/'
@@ -87,11 +93,12 @@ fft_plot_dir = 'plot/fft/'
 
 # check.py
 good_du          = 1010
-check_result_dir = 'result/check/'
+check_data_files = 'data/20231014/*.root'
+check_result_dir = 'result/check/20231014/'
 
 # plot_check.py
-check_plot_files = 'result/check/*.npz'
-check_plot_dir   = 'plot/check/'
+check_plot_files = 'result/check/20231014/*.npz'
+check_plot_dir   = 'plot/check/20231014/'
 
 # analyze RMS
 rms_data_files = 'data/20231012/*.root'
@@ -99,16 +106,16 @@ rms_result_dir = 'result/rms/20231012'
 rms_npz_files  = 'result/rms/20231028/*.npz'
 rms_plot_dir   = 'plot/rms/20231028/'
 
-##############################
-# GET ROOT FILES AND DU LIST #
-##############################
+################################
+# GET DUS FROM ROOT / NPZ FILES#
+################################
 
-def get_root_du(file_path):
+def get_root_du(files):
     # enable GRANDLIB
     import grand.dataio.root_trees as rt
 
     # get ROOT files
-    file_list = sorted(glob.glob(file_path))
+    file_list = sorted(glob(files))
 
     # create an empty set to store unique DUs
     du_set = set()
@@ -128,17 +135,10 @@ def get_root_du(file_path):
     # print the list of all used good DUs
     print(f'\nROOT files contain data from following good DUs: \n{du_list}\n')
 
-    # return ROOT files and DUs
-    return file_list, du_list
+    # return DUs
+    return du_list
 
-#############################
-# GET NPZ FILES AND DU LIST #
-#############################
-
-def get_npz_du(files):
-    # get NPZ files
-    file_list = sorted(glob.glob(files))
-
+def get_npz_du(file_list):
     # create an empty set to store unique DUs
     du_set = set()
 
@@ -149,7 +149,7 @@ def get_npz_du(files):
         print(basename)
     
         # split the filename on underscore
-        du = int(basename.split('_')[0][2:])
+        du = int(basename.split('_')[1][2:])
         du_set.add(du)
 
     # convert the set to a list in order
@@ -161,12 +161,14 @@ def get_npz_du(files):
     # print the list of all used DUs
     print(f'\nNPZ files contain data from following DUs: \n{du_list}\n')
 
-    # return NPZ files and DUs
-    return file_list, du_list
+    # return DUs
+    return du_list
 
-#################################
+########
+# TIME #
+########
+
 # GET DATE AND TIME FROM A FILE #
-#################################
 
 def get_root_datetime(filename):
     # assume all filenames have the same pattern
@@ -182,9 +184,7 @@ def get_npz_datetime(basename):
     datetime_flat = date_time.strftime('%Y%m%d%H%M%S')
     return date_time, datetime_flat
 
-###########################
 # CONVERT GPS TIME TO UTC #
-###########################
 
 # GPS time = UTC + 18s at present
 def gps2utc(gps_times):
@@ -196,9 +196,9 @@ def gps2utc1(gps_time):
     leap_seconds = 18 # number of leap seconds since Jan 6th 1980
     return datetime.utcfromtimestamp(gps_time - leap_seconds)
 
-####################################
-# CORE FUNCTIONS TO SEARCH WINDOWS #
-####################################
+###########################
+# SEARCH FOR TIME WINDOWS #
+###########################
 
 def high_pass_filter(trace, 
                      sample_frequency, 
@@ -225,6 +225,10 @@ def search_windows(trace,
     # stop if there are no transients
     exceed_threshold = np.abs(trace) > threshold
     if np.sum(exceed_threshold) < num_crossings:
+        return []
+
+    # stop if this is a bad trace
+    if np.std(trace) > fluctuation * threshold / num_threshold:
         return []
     
     # find trace positions where threshold is exceeded

@@ -5,6 +5,8 @@
 # import everything from the config module
 from config import *
 
+time_axis = np.arange(1024) * time_step # time axis of a trace
+
 ######################################
 # PLOT TRACES TO CHECK SEARCH METHOD #
 ######################################
@@ -49,24 +51,30 @@ def plot_trace(file):
     plt.close(fig)
 
 def plot_channel(ax, traces, channel, filter_status):
+    # search for time windows
+    threshold   = num_threshold * noises[channel][good_du]
+    window_list = search_windows(trace=traces[channel], 
+                                 threshold=threshold, 
+                                 filter=filter_status)
+
     # filter trace based on filter status
     if filter_status == 'on':
         trace = high_pass_filter(traces[channel], sample_frequency, cutoff_frequency)
     else:
         trace = traces[channel]
 
-    # search for time windows
-    threshold = num_threshold*noises[channel][good_du]
-    window_list = search_windows(trace=trace, 
-                                 threshold=threshold, 
-                                 filter=filter_status)
-
     # plot the trace
     ax.plot(time_axis, trace, color='blue', label=f'trace')
 
     # add horizontal dashed lines at +/- threshold of the trace
-    ax.axhline(y=threshold, color='red', linestyle='--', label=f'+/- threshold={threshold:.2f}')
+    ax.axhline(y=threshold, color='red', linestyle='--', label=f'+/- threshold={threshold}')
     ax.axhline(y=-threshold, color='red', linestyle='--')
+
+    # add horizontal dashed lines at +/- STD of the trace
+    std = np.std(trace)
+    ax.axhline(y=std, color='orange', linestyle='--', label=f'+/- STD={std:.2f}')
+    ax.axhline(y=-std, color='orange', linestyle='--')
+
 
     # highlight the time windows
     for id, window in enumerate(window_list):
@@ -87,7 +95,7 @@ def plot_channel(ax, traces, channel, filter_status):
     ax.text(1.02, 0.5, f'channel {channel}, filter {filter_status}', verticalalignment='center', horizontalalignment='left', transform=ax.transAxes, fontsize=16, rotation=-90)
 
     # set X-limits
-    ax.set_xlim(-4, 4100)
+    #ax.set_xlim(-4, 4100)
 
     # set X-tick every 250 units
     ax.set_xticks(np.arange(min(time_axis), max(time_axis)+1, 250))
@@ -107,7 +115,7 @@ def plot_channel(ax, traces, channel, filter_status):
 
 def main():
     # get NPZ files
-    file_list = sorted(glob.glob(check_plot_files))
+    file_list = sorted(glob(check_plot_files))
 
     # check 1 ROOT file to test the search method; only consider 1 good DU
     for file in file_list:
