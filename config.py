@@ -31,9 +31,11 @@ start_time = wall_time.perf_counter()
 # DEFINE ARGUMENTS #
 ####################
 
+adcu2v              = 0.9 / 1892 # convert from ADC units back to volts
 channels            = ['X', 'Y', 'Z'] # make dictionaries for easier indexing
 cutoff_frequency    = 50 # cut-off frequency of the high pass filter [MHz]
 fluctuation         = 1.5 # tolerance of abnormal fluctuation
+linear_gain         = np.sqrt(10) # system's linear gain 
 max_samples         = 512 # maximum number of samples in a transient/pulse
 num_crossings       = 2 # least number of threshold crossings in a time window
 num_samples         = 2048 # number of samples in a trace
@@ -58,6 +60,7 @@ du_list = [1010, 1013, 1016, 1017, 1019, 1020, 1021, 1029, 1031, 1032, 1033, 103
 
 # good DUs
 good_du_list = [1010, 1017, 1019, 1020, 1021, 1029, 1032, 1035]
+#good_du_list = [1013, 1016, 1031, 1041]
 
 # make a dictionary to store average noise level
 noises = {
@@ -100,15 +103,20 @@ check_result_dir = 'result/check/20231014/'
 check_plot_files = 'result/check/20231014/*.npz'
 check_plot_dir   = 'plot/check/20231014/'
 
+# plot_fft.py
+galaxy_sim_dir  = 'data/galaxy/'
+galaxy_sim_name = ['VoutRMS2_NSgalaxy.npy', 'VoutRMS2_EWgalaxy.npy', 'VoutRMS2_Zgalaxy.npy']
+compare_plot_dir = 'plot/compare/'
+
 # analyze RMS
 rms_data_files = 'data/20231012/*.root'
 rms_result_dir = 'result/rms/20231012'
 rms_npz_files  = 'result/rms/20231028/*.npz'
 rms_plot_dir   = 'plot/rms/20231028/'
 
-################################
-# GET DUS FROM ROOT / NPZ FILES#
-################################
+#################################
+# GET DUS FROM ROOT/NPZ FILES #
+#################################
 
 def get_root_du(files):
     # enable GRANDLIB
@@ -171,11 +179,11 @@ def get_npz_du(file_list):
 # GET DATE AND TIME FROM A FILE #
 
 def get_root_datetime(filename):
-    # assume all filenames have the same pattern
+    # assume all ROOT filenames have the same pattern
     datetime_str  = filename.split('test.')[1].split('.')[0]
     date_time     = datetime.strptime(datetime_str, '%Y%m%d%H%M%S')
     datetime_flat = date_time.strftime('%Y%m%d%H%M%S')
-    return datetime_flat
+    return date_time, datetime_flat
 
 def get_npz_datetime(basename):
     # assume all NPZ filenames have the same pattern
@@ -210,7 +218,7 @@ def high_pass_filter(trace,
     b, a = butter(4, cutoff_frequency / Nyquist_frequency, btype='high', analog=False)
     return filtfilt(b, a, trace)
 
-def search_windows(trace, 
+def search_windows(trace,
                    threshold,
                    filter='off',
                    standard_separation=standard_separation,
@@ -260,31 +268,6 @@ def search_windows(trace,
             window_list.append([start_id, stop_id])
 
     return window_list
-
-def iterative_search(trace, num_threshold, standard_separation): # not tested and used
-    # initialize variables
-    window_list = []
-    cur_window_list = []
-    noise_trace = np.copy(trace)
-
-    while True:
-        # calculate current threshold using the standard deviation of current noise trace
-        threshold = num_threshold * np.std(noise_trace)
-
-        # search for time windows using current threshold
-        cur_window_list = search_windows(trace, threshold, standard_separation)
-
-        # check if the number of time windows found is the same as that in the previous iteration
-        if len(cur_window_list) == len(window_list):
-            return cur_window_list
-        else:
-            window_list = cur_window_list
-
-            # exclude the windowed parts from the trace to get next noise trace 
-            noise_trace = np.copy(trace)
-            for start_id, stop_id in cur_window_list:
-                noise_trace[start_id:stop_id+1] = 0
-            noise_trace = noise_trace[noise_trace != 0]
 
 #######################
 # RECORD RUNNING TIME #

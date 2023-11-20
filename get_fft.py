@@ -82,7 +82,7 @@ def get_psd(trace):
     # convert FFT from ADC units to Volts and adjust for system gain
     fft = fft * adcu2v / linear_gain
 
-    # compute power of FFT and normalize to trace length
+    # compute power of FFT and normalize it to number of samples in the trace
     num_samples = len(trace)
     fft_power = fft * fft / num_samples / num_samples
 
