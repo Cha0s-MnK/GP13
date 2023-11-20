@@ -9,68 +9,111 @@ from config import *
 # PLOT MEAN FFTS FOR A FILE #
 #############################
 
-def plot1fft(file):
-    # number of samples in a trace
-    num_samples = 1024
+def compare_fft(before_day_file, after_day_file, before_night_file, after_night_file):
+    # get DU of these files
+    basename = os.path.basename(before_day_file)
+    du       = int(basename.split('_')[1][2:])
 
-    # frequencies of the FFT [MHz]
-    fft_frequency = np.fft.rfftfreq(num_samples) * sample_frequency
+    # create a 3x2 layout for the subplots and adjust the figure size
+    fig, axes = plt.subplots(3, 2, figsize=(32, 20), dpi=200)
 
-    # get information of this file
-    basename        = os.path.basename(file)
-    du              = int(basename.split('_')[1][2:])
-    date_time, datetime_flat = get_npz_datetime(basename)
-    npz_file        = np.load(file, allow_pickle=True)
-    mean_fft        = {channel: npz_file[f'mean_fft{channel}'] for channel in channels}
-    mean_filter_fft = {channel: npz_file[f'mean_filtered_fft{channel}'] for channel in channels}
-
-    # create a figure with 2 subplots and adjust the figure size
-    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 14), dpi=256)
+    # flatten axes array for easier indexing
+    axes = axes.flatten()
 
     # plot the original FFTs and filtered FFTs for each channel in the subplots
     # X(north-south), Y(east-west) and Z(up-down)
-    colours = ['green', 'blue', 'red']
-    for id, channel in enumerate(channels):
-        ax1.plot(fft_frequency, mean_fft[channel], label=f'Channel {channel}', color=colours[id])
-        ax1.set_ylabel('Mean FFT / a.u.')
+    before_day_datetime   = plot_file(axes, before_day_file, 'before', 'day')
+    before_night_datetime = plot_file(axes, before_night_file, 'before', 'night')
+    after_day_datetime    = plot_file(axes, after_day_file, 'after', 'day')
+    after_night_datetime  = plot_file(axes, after_night_file, 'after', 'night')
 
-        ax2.plot(fft_frequency, mean_filter_fft[channel], label=f'Channel {channel}', color=colours[id])
-        ax2.set_xlabel('Frequency / MHz')
-        ax2.set_ylabel('Mean Filtered FFT / a.u.')
+    for id, ax in enumerate(axes):
+        # set Y-scale
+        ax.set_yscale('log')
 
-    # set Y-scale
-    ax1.set_yscale('log')
-    ax2.set_yscale('log')
-
-    # add vertical lines at 30MHz and 50MHz to test the filter in both subplots
-    for ax in [ax1, ax2]:
+        # add vertical lines at 30MHz and 50MHz
         ax.axvline(x=30, color='purple', linestyle='--', linewidth=2, label='30 MHz')
         ax.axvline(x=50, color='orange', linestyle='--', linewidth=2, label='50 MHz')
-    
-    # add legends
-    ax1.legend(frameon=True)
-    ax2.legend(frameon=True)
 
-    # hide the X-ticks of ax1
-    ax1.set_xticks([])
+        # hide X-ticks of above subplots
+        if id != 2 and id != 5:
+            ax.set_xticks([])
 
-    # add a supertitle for the entire figure
-    fig.suptitle(f'Mean FFT Analysis for DU{du} on {date_time}'
-                 f'\nThreshold = {num_threshold}, Separation = {standard_separation} samples, Least Crossing = {num_crossings}'
-                 f'\nMax samples = {max_samples}, Sample frequency = {sample_frequency} MHz, Cutoff frequency = {cutoff_frequency} MHz', 
+        # add legends
+        ax.legend(frameon=True)
+
+    # set common labels and title
+    fig.text(0.5, 0.0, 'Frequency / MHz', ha='center', fontsize=18)
+    fig.text(0.0, 0.5, 'Mean FFT / ADC units', va='center', rotation='vertical', fontsize=18)
+    fig.suptitle(f'Mean FFT Analysis for DU{du}'
+                 f'\nSample frequency = {sample_frequency} MHz, Cutoff frequency = {cutoff_frequency} MHz', 
                  fontsize=20)
 
     # adjust the layout: left, bottom, right, top
-    plt.tight_layout(rect=[0, 0, 1, 0.98])
+    plt.tight_layout(rect=[0.01, 0.01, 1, 0.98])
 
     # save the figure as a PNG file
-    fft_plot_name = f'fft_DU{du}_threshold{num_threshold}_separation{standard_separation}_crossing{num_crossings}_max{max_samples}_frequency{sample_frequency}_cutoff{cutoff_frequency}_{datetime_flat}.png'
-    fft_plot_file = os.path.join(fft_plot_dir, fft_plot_name)
-    plt.savefig(fft_plot_file)
-    print(f'Saved: {fft_plot_file}')
+    compare_plot_name = f'compare_DU{du}_frequency{sample_frequency}_cutoff{cutoff_frequency}.png'
+    compare_plot_file = os.path.join(compare_plot_dir, compare_plot_name)
+    plt.savefig(compare_plot_file)
+    print(f'Saved: {compare_plot_file}')
 
     # close the figure to free up memory
     plt.close(fig)
+
+    pass
+
+def plot_file(axes,
+              file,
+              date_status,
+              time_status):
+    # get information of this file
+    basename                 = os.path.basename(file)
+    date_time, datetime_flat = get_npz_datetime(basename)
+    npz_file                 = np.load(file, allow_pickle=True)
+    mean_fft                 = {channel: npz_file[f'mean_fft{channel}'] for channel in channels}
+    mean_filtered_fft        = {channel: npz_file[f'mean_filtered_fft{channel}'] for channel in channels}
+
+    # get FFT frequency based on date status
+    if date_status == 'before':
+        # number of samples in a trace
+        num_samples = 1024
+
+        # frequencies of the FFT [MHz]
+        fft_frequency = np.fft.rfftfreq(num_samples) * sample_frequency
+    else:
+        # number of samples in a trace
+        num_samples = 2048
+
+        # frequencies of the FFT [MHz]
+        fft_frequency = np.fft.rfftfreq(num_samples) * sample_frequency
+
+    # change line style based on date status
+    if date_status == 'before':
+        linestyle = '--'
+    else:
+        linestyle = '-'
+
+    # change colour based on time status
+    if time_status == 'day':
+        colour = 'red'
+    else:
+        colour = 'blue'
+
+    # plot original FFTs and filtered FFTs for each channel in the subplots
+    # X(north-south), Y(east-west) and Z(up-down)
+    colours = ['green', 'blue', 'red']
+    for id, channel in enumerate(channels):
+        # original traces will be on left three subplots: 0, 2, 4
+        axes[2*id].plot(fft_frequency, mean_fft[channel], label=f'{date_status} {time_status}', linestyle=linestyle, color=colour)
+
+        # filtered traces will be on the last three subplots: 1, 3, 5
+        axes[2*id+1].plot(fft_frequency, mean_filtered_fft[channel], label=f'{date_status} {time_status}', linestyle=linestyle, color=colour)
+
+        # set the title on the right-hand side
+        axes[2*id+1].text(1.01, 0.5, f'channel {channel}', verticalalignment='center', horizontalalignment='left', transform=axes[2*id+1].transAxes, fontsize=16, rotation=-90)
+    
+    return date_time
 
 #################
 # MAIN FUNCTION #
@@ -78,11 +121,13 @@ def plot1fft(file):
 
 def main(): 
     # get NPZ files
-    file_list = sorted(glob.glob('result/fft_old/*.npz'))
+    before_day_file   = 'result/fft/DU1010/fft_DU1010_frequency500_cutoff50_20231014131923.npz'
+    after_day_file    = 'result/fft/DU1010/fft_DU1010_frequency500_cutoff50_20231028121653.npz'
+    before_night_file = 'result/fft/DU1010/fft_DU1010_frequency500_cutoff50_20231014015122.npz'
+    after_night_file  = 'result/fft/DU1010/fft_DU1010_frequency500_cutoff50_20231028001953.npz'
 
-    # loop through NPZ files to plot FFTs
-    for file in file_list:
-        plot1fft(file)
+    # compare FFTs before and after the site trip
+    compare_fft(before_day_file, after_day_file, before_night_file, after_night_file)
 
     pass
 
