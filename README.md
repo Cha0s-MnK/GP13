@@ -10,4 +10,4 @@ These 2 files can plot the transient rates by reading data from GP13. You need t
 
 ## plot_rate.py
 
-
+Run in your PC.
