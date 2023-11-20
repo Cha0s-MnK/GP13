@@ -27,6 +27,17 @@ def compare_fft(before_day_file, after_day_file, before_night_file, after_night_
     after_day_datetime    = plot_file(axes, after_day_file, 'after', 'day')
     after_night_datetime  = plot_file(axes, after_night_file, 'after', 'night')
 
+    # add galactic noise simulations
+    galaxy_frequency = range(10, 250) # [MHz]
+    for id in range(len(channels)):
+        galaxy_noises = np.load(os.path.join(galaxy_sim_dir, galaxy_sim_name[id]))
+        galaxy_noise_day   = galaxy_noises[:,13] / linear_gain / linear_gain  #Take 18h LST - correct for 20dB gain
+        galaxy_noise_night = galaxy_noises[:,0] / linear_gain / linear_gain   #Take 6h LST - correct for 20dB gain
+        axes[2*id].semilogy(galaxy_frequency, galaxy_noise_day[0:240], "--", label='Galaxy Noise in Day (Sandra)')
+        axes[2*id].semilogy(galaxy_frequency, galaxy_noise_night[0:240], "--", label='Galaxy Noise at Night (Sandra)')
+        axes[2*id+1].semilogy(galaxy_frequency, galaxy_noise_day[0:240], "--", label='Galaxy Noise in Day (Sandra)')
+        axes[2*id+1].semilogy(galaxy_frequency, galaxy_noise_night[0:240], "--", label='Galaxy Noise at Night (Sandra)')
+
     for id, ax in enumerate(axes):
         # set Y-scale
         ax.set_yscale('log')
@@ -36,7 +47,7 @@ def compare_fft(before_day_file, after_day_file, before_night_file, after_night_
         ax.axvline(x=50, color='orange', linestyle='--', linewidth=2, label='50 MHz')
 
         # hide X-ticks of above subplots
-        if id != 2 and id != 5:
+        if id != 4 and id != 5:
             ax.set_xticks([])
 
         # add legends

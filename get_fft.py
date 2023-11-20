@@ -54,12 +54,14 @@ def compute1fft(file):
             
         # get FFTs, filtered FFTs and sum them up
         for id, channel in enumerate(channels):
-            fft = np.abs(np.fft.rfft(traces[id]))
-            filtered_fft = np.abs(np.fft.rfft(high_pass_filter(trace=traces[id], 
-                                                               sample_frequency=sample_frequency,
-                                                               cutoff_frequency=cutoff_frequency)))
-            sum_fft[channel][du] += fft
-            sum_filtered_fft[channel][du] += filtered_fft
+            fft_psd = get_psd(traces[id])
+            filtered_fft_psd = get_psd((high_pass_filter(trace=traces[id], 
+                                                         sample_frequency=sample_frequency,
+                                                         cutoff_frequency=cutoff_frequency)))
+
+            # sum up the normalized PSD for later averaging
+            sum_fft[channel][du] += fft_psd
+            sum_filtered_fft[channel][du] += filtered_fft_psd
 
     # loop through all DUs to compute mean FFTs and save all information into a NPZ file
     for du in du_list:
@@ -72,6 +74,26 @@ def compute1fft(file):
         print(f'Saved: {fft_result_file}')
 
     pass
+
+def get_psd(trace):
+    # get FFTs
+    fft = np.abs(np.fft.rfft(trace))
+
+    # convert FFT from ADC units to Volts and adjust for system gain
+    fft = fft * adcu2v / linear_gain
+
+    # compute power of FFT and normalize to trace length
+    num_samples = len(trace)
+    fft_power = fft * fft / num_samples / num_samples
+
+    # calculate frequency bin width
+    fft_frequency       = np.fft.rfftfreq(num_samples) * sample_frequency # frequencies of the FFT [MHz]
+    frequency_bin_width = fft_frequency[1] - fft_frequency[0]
+
+    # normalize power to frequency bin width to get power spectral density (PSD)
+    fft_psd = fft_power / frequency_bin_width
+
+    return fft_psd
 
 #################
 # MAIN FUNCTION #
