@@ -51,27 +51,21 @@ time_axis     = np.arange(num_samples) * time_step # time axis of a trace
 channel_mask = np.array([False, True, True, True])
 
 # all/default dates
-date_list = ['20231011/', '20231012/', '20231013/', '20231014/', '20231015/', '20231016/', '20231017/', '20231018/', 
-             '20231019/', '20231020/', '20231021/', '20231022/', '20231027/', '20231028/', '20231029/', '20231030/', 
-             '20231031/']
+date_list = ['20231011', '20231012', '20231013', '20231014', '20231015', '20231016', '20231017', '20231018', 
+             '20231019', '20231020', '20231021', '20231022', '20231027', '20231028', '20231029', '20231030', 
+             '20231031', '20231115', '20231116', '20231117', '20231119', '20231120', '20231121']
 
 # all/default DUs
-du_list = [1010, 1013, 1016, 1017, 1019, 1020, 1021, 1029, 1031, 1032, 1033, 1035, 1041]
+du_list = [1010, 1013, 1016, 1017, 1019, 1020, 1021, 1029, 1031, 1032, 1033, 1035, 1041, 1076]
 
 # good DUs
 good_du_list = [1010, 1017, 1019, 1020, 1021, 1029, 1032, 1035]
-good_du_list = [1010, 1013, 1016, 1017, 1019, 1020, 1021, 1029, 1031, 1032, 1033, 1035, 1041]
+good_du_list = [1076]
 
 # make a dictionary to store average noise level
-noises = {
-    'X': {1010: 30, 1017: 30.42, 1019: 31.25, 1020: 39.21, 1021: 33.70, 1029: 23.40, 1032: 42.08, 1035: 29.69},
-    'Y': {1010: 30, 1017: 20.58, 1019: 24.55, 1020: 24.66, 1021: 32.39, 1029: 18.47, 1032: 40.57, 1035: 25.83},
-    'Z': {1010: 60, 1017: 48.43, 1019: 67.11, 1020: 53.13, 1021: 88.26, 1029: 44.61, 1032: 105.35, 1035: 62.39}
-}
-
 noisesX = {du: 30 for du in good_du_list}
-noisesY = {du: 30 for du in good_du_list}
-noisesZ = {du: 75 for du in good_du_list}
+noisesY = {du: 4 for du in good_du_list}
+noisesZ = {du: 4 for du in good_du_list}
 noises = {'X': noisesX, 'Y': noisesY, 'Z': noisesZ}
 
 ########################################
@@ -100,10 +94,13 @@ check_result_dir = 'result/check/20231014/'
 check_plot_files = 'result/check/20231014/*.npz'
 check_plot_dir   = 'plot/check/20231014/'
 
+# get_fft.py
+fft_result_dir  = 'result/fft'
+
 # plot_fft.py
-galaxy_sim_dir  = 'data/galaxy/'
+galaxy_sim_dir  = 'data/galaxy'
 galaxy_sim_name = ['VoutRMS2_NSgalaxy.npy', 'VoutRMS2_EWgalaxy.npy', 'VoutRMS2_Zgalaxy.npy']
-fft_plot_dir    = 'plot/fft/'
+fft_plot_dir    = 'plot/fft'
 
 # analyze RMS
 rms_data_files = 'data/20231012/*.root'

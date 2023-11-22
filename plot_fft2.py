@@ -9,12 +9,10 @@ from config import *
 # PLOT MEAN FFTS FOR A FILE #
 #############################
 
-def plot_fft(before_day_file, 
-             before_night_file, 
-             after_day_file, 
-             after_night_file):
+def plot_fft2(day_file, 
+              night_file):
     # get DU of these files
-    basename = os.path.basename(before_day_file)
+    basename = os.path.basename(day_file)
     du       = int(basename.split('_')[1][2:])
 
     # create a 3x2 layout for the subplots and adjust the figure size
@@ -25,10 +23,8 @@ def plot_fft(before_day_file,
 
     # plot the original FFTs and filtered FFTs for each channel in the subplots
     # X(north-south), Y(east-west) and Z(up-down)
-    plot_file(axes, before_day_file, 'before', 'day')
-    plot_file(axes, before_night_file, 'before', 'night')
-    plot_file(axes, after_day_file, 'after', 'day')
-    plot_file(axes, after_night_file, 'after', 'night')
+    plot_file2(axes, day_file, 'day')
+    plot_file2(axes, night_file, 'night')
 
     # add galactic noise simulations
     galaxy_frequency = range(10, 250) # [MHz]
@@ -47,11 +43,14 @@ def plot_fft(before_day_file,
         ax.set_yscale('log')
 
         # apply a cutoff by setting the lower limit of the y-axis
-        ax.set_ylim(bottom=1e-12)
+        if id % 2 == 0:
+            ax.set_ylim(bottom=5e-13)
+        else:
+            ax.set_ylim(bottom=1e-15)
 
         # add vertical lines at 30MHz and 50MHz
         ax.axvline(x=30, color='purple', linestyle=':', linewidth=2, label='30 MHz')
-        ax.axvline(x=50, color='orange', linestyle=':', linewidth=2, label='50 MHz')
+        ax.axvline(x=50, color='green', linestyle=':', linewidth=2, label='50 MHz')
 
         # hide X-ticks of above subplots
         if id != 4 and id != 5:
@@ -83,9 +82,8 @@ def plot_fft(before_day_file,
 
     pass
 
-def plot_file(axes,
+def plot_file2(axes,
               file,
-              date_status,
               time_status):
     # get information of this file
     basename                 = os.path.basename(file)
@@ -93,26 +91,6 @@ def plot_file(axes,
     npz_file                 = np.load(file, allow_pickle=True)
     mean_fft                 = {channel: npz_file[f'mean_fft{channel}'] for channel in channels}
     mean_filtered_fft        = {channel: npz_file[f'mean_filtered_fft{channel}'] for channel in channels}
-
-    # get FFT frequency based on date status
-    if date_status == 'before':
-        # number of samples in a trace
-        num_samples = 1024
-
-        # frequencies of the FFT [MHz]
-        fft_frequency = np.fft.rfftfreq(num_samples) * sample_frequency
-    else:
-        # number of samples in a trace
-        num_samples = 2048
-
-        # frequencies of the FFT [MHz]
-        fft_frequency = np.fft.rfftfreq(num_samples) * sample_frequency
-
-    # change line style based on date status
-    if date_status == 'before':
-        linestyle = '--'
-    else:
-        linestyle = '-'
 
     # change colour based on time status
     if time_status == 'day':
@@ -125,10 +103,10 @@ def plot_file(axes,
     colours = ['green', 'blue', 'red']
     for id, channel in enumerate(channels):
         # original traces will be on left three subplots: 0, 2, 4
-        axes[2*id].plot(fft_frequency, mean_fft[channel], label=f'{time_status} {date_status} trip: {date_time}', linestyle=linestyle, color=colour)
+        axes[2*id].plot(fft_frequency, mean_fft[channel], label=f'{time_status}: {date_time}', color=colour)
 
         # filtered traces will be on the last three subplots: 1, 3, 5
-        axes[2*id+1].plot(fft_frequency, mean_filtered_fft[channel], label=f'{time_status} {date_status} trip: {date_time}', linestyle=linestyle, color=colour)
+        axes[2*id+1].plot(fft_frequency, mean_filtered_fft[channel], label=f'{time_status}: {date_time}', color=colour)
 
         # set the title on the right-hand side
         axes[2*id+1].text(1.01, 0.5, f'channel {channel}', verticalalignment='center', horizontalalignment='left', transform=axes[2*id+1].transAxes, fontsize=16, rotation=-90)
@@ -139,17 +117,14 @@ def plot_file(axes,
 # MAIN FUNCTION #
 #################
 
-def main(): 
-    # loop through each good DU
-    for du in good_du_list:
-        # construct filenames for each DU
-        before_day_file   = os.path.join(fft_result_dir, f'DU{du}', f'fft_DU{du}_frequency500_cutoff50_20231015141013.npz')
-        before_night_file = os.path.join(fft_result_dir, f'DU{du}', f'fft_DU{du}_frequency500_cutoff50_20231014015122.npz')
-        after_day_file    = os.path.join(fft_result_dir, f'DU{du}', f'fft_DU{du}_frequency500_cutoff50_20231028140424.npz')
-        after_night_file  = os.path.join(fft_result_dir, f'DU{du}', f'fft_DU{du}_frequency500_cutoff50_20231029020123.npz')
+# plot FFTs of DU1076
+def main():
+    # get NPZ files containing FFTs
+    day_file   = 'result/fft/DU1076/fft_DU1076_frequency500_cutoff50_20231120140803.npz'
+    night_file = 'result/fft/DU1076/fft_DU1076_frequency500_cutoff50_20231121013803.npz'
 
-        # plot and compare FFTs before and after the site trip for each DU
-        plot_fft(before_day_file, before_night_file, after_day_file, after_night_file)
+    # plot FFTs and compare them with galactic noises
+    plot_fft2(day_file, night_file)
 
     pass
 

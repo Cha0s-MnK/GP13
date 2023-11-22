@@ -54,7 +54,7 @@ def compute1fft(file):
             
         # get FFTs, filtered FFTs and sum them up
         for id, channel in enumerate(channels):
-            fft_psd = get_psd(traces[id])
+            fft_psd          = get_psd(traces[id])
             filtered_fft_psd = get_psd((high_pass_filter(trace=traces[id], 
                                                          sample_frequency=sample_frequency,
                                                          cutoff_frequency=cutoff_frequency)))
@@ -65,9 +65,8 @@ def compute1fft(file):
 
     # loop through all DUs to compute mean FFTs and save all information into a NPZ file
     for du in du_list:
-        fft_result_dir  = f'result/fft/DU{du}/'
         fft_result_name = f'fft_DU{du}_frequency{sample_frequency}_cutoff{cutoff_frequency}_{datetime_flat}.npz'
-        fft_result_file = os.path.join(fft_result_dir, fft_result_name)
+        fft_result_file = os.path.join(fft_result_dir, f'DU{du}', fft_result_name)
         np.savez(fft_result_file,
                 **{f'mean_fft{channel}': sum_fft[channel][du] / num_du_entries[du] for channel in channels},
                 **{f'mean_filtered_fft{channel}': sum_filtered_fft[channel][du] / num_du_entries[du] for channel in channels})
@@ -84,7 +83,7 @@ def get_psd(trace):
 
     # compute power of FFT and normalize it to number of samples in the trace
     num_samples = len(trace)
-    fft_power = fft * fft / num_samples / num_samples
+    fft_power   = fft * fft / num_samples / num_samples
 
     # calculate frequency bin width
     fft_frequency       = np.fft.rfftfreq(num_samples) * sample_frequency # frequencies of the FFT [MHz]
@@ -99,14 +98,19 @@ def get_psd(trace):
 # MAIN FUNCTION #
 #################
 
-# get mean FFTs of only 1 ROOT file
+# get mean FFTs of ROOT files
 def main():
     # get ROOT files
     file_list = [
-    'data/20231014/GRAND.TEST-RAW-10s-ChanXYZ_20dB_DU10_16_17_19_20_21_29_32_33_35_10Dus_test.20231014131923.027_dat.root',
-    'data/20231028/GRAND.TEST-RAW-10s-ChanXYZ_20dB_11DUs_RUN80_test.20231028121653.161_dat.root',
+    'data/20231015/GRAND.TEST-RAW-10s-ChanXYZ_20dB_DU10_16_17_19_20_21_29_32_33_35_10Dus_test.20231015141013.040_dat.root',
+    'data/20231028/GRAND.TEST-RAW-10s-ChanXYZ_20dB_11DUs_RUN80_test.20231028140424.164_dat.root',
     'data/20231014/GRAND.TEST-RAW-10s-ChanXYZ_20dB_DU10_16_17_19_20_21_29_32_33_35_10Dus_test.20231014015122.021_dat.root',
-    'data/20231028/GRAND.TEST-RAW-10s-ChanXYZ_20dB_11DUs_RUN80_test.20231028001953.141_dat.root'
+    'data/20231029/GRAND.TEST-RAW-10s-ChanXYZ_20dB_11DUs_RUN80_test.20231029020123.184_dat.root'
+    ]
+
+    file_list = [
+    'data/20231120/GRAND.TEST-RAW-10s-ChanXYZ_20dB_DU76_RUN93_test.20231120140803.037_dat.root',
+    'data/20231121/GRAND.TEST-RAW-10s-ChanXYZ_20dB_DU76_RUN93_test.20231121013803.047_dat.root'
     ]
 
     # compute and store mean FFTs
