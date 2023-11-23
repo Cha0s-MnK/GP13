@@ -9,7 +9,9 @@ from glob import glob
 import itertools
 from matplotlib.lines import Line2D
 import matplotlib.dates as mdates
+from matplotlib.gridspec import GridSpec as gridspec
 import matplotlib.pyplot as plt
+import matplotlib.ticker as ticker
 plt.rcParams["font.family"] = "Times New Roman"
 plt.rcParams["axes.labelsize"] = 16
 plt.rcParams["axes.titlesize"] = 18
@@ -56,16 +58,15 @@ date_list = ['20231011', '20231012', '20231013', '20231014', '20231015', '202310
              '20231031', '20231115', '20231116', '20231117', '20231119', '20231120', '20231121']
 
 # all/default DUs
-du_list = [1010, 1013, 1016, 1017, 1019, 1020, 1021, 1029, 1031, 1032, 1033, 1035, 1041, 1076]
+du_list = [1010, 1013, 1016, 1017, 1019, 1020, 1021, 1029, 1031, 1032, 1033, 1035, 1041, 1076, 1085]
 
 # good DUs
-good_du_list = [1010, 1017, 1019, 1020, 1021, 1029, 1032, 1035]
-good_du_list = [1076]
+good_du_list = [1010, 1013, 1016, 1017, 1019, 1020, 1021, 1029, 1031, 1032, 1033, 1035, 1041, 1076, 1085]
 
 # make a dictionary to store average noise level
 noisesX = {du: 30 for du in good_du_list}
-noisesY = {du: 4 for du in good_du_list}
-noisesZ = {du: 4 for du in good_du_list}
+noisesY = {du: 5 for du in good_du_list}
+noisesZ = {du: 5 for du in good_du_list}
 noises = {'X': noisesX, 'Y': noisesY, 'Z': noisesZ}
 
 ########################################
@@ -87,20 +88,22 @@ fft_plot_dir = 'plot/fft/'
 
 # check.py
 good_du          = 1010
-check_data_files = 'data/20231014/*.root'
-check_result_dir = 'result/check/20231014/'
+check_data_files = 'data/20231120/*.root'
+check_result_dir = 'result/check/20231120/'
 
 # plot_check.py
-check_plot_files = 'result/check/20231014/*.npz'
-check_plot_dir   = 'plot/check/20231014/'
+check_plot_dir   = 'plot/check/20231120/'
 
 # get_fft.py
 fft_result_dir  = 'result/fft'
 
-# plot_fft.py
+# plot_fft2.py
 galaxy_sim_dir  = 'data/galaxy'
 galaxy_sim_name = ['VoutRMS2_NSgalaxy.npy', 'VoutRMS2_EWgalaxy.npy', 'VoutRMS2_Zgalaxy.npy']
 fft_plot_dir    = 'plot/fft'
+
+# get_amplitude.py
+amplitude_result_dir = 'result/amplitude'
 
 # analyze RMS
 rms_data_files = 'data/20231012/*.root'

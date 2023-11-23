@@ -12,7 +12,7 @@ from config import *
 # COMPUTE AND STORE MEAN FFT FOR A FILE #
 #########################################
 
-def compute1fft(file):
+def get_fft(file):
     # get DUs of this ROOT file
     du_list = get_root_du(file)
 
@@ -63,8 +63,12 @@ def compute1fft(file):
             sum_fft[channel][du] += fft_psd
             sum_filtered_fft[channel][du] += filtered_fft_psd
 
-    # loop through all DUs to compute mean FFTs and save all information into a NPZ file
+    # loop through all DUs
     for du in du_list:
+        # create the saved directory if it does not exist
+        os.makedirs(os.path.join(fft_result_dir, f'DU{du}'), exist_ok=True)
+
+        # compute mean FFT PSDs and save all information into a NPZ file
         fft_result_name = f'fft_DU{du}_frequency{sample_frequency}_cutoff{cutoff_frequency}_{datetime_flat}.npz'
         fft_result_file = os.path.join(fft_result_dir, f'DU{du}', fft_result_name)
         np.savez(fft_result_file,
@@ -78,18 +82,18 @@ def get_psd(trace):
     # get FFTs
     fft = np.abs(np.fft.rfft(trace))
 
-    # convert FFT from ADC units to Volts and adjust for system gain
+    # convert FFT from ADC units to Volts and adjust for system linear gain
     fft = fft * adcu2v / linear_gain
 
     # compute power of FFT and normalize it to number of samples in the trace
     num_samples = len(trace)
     fft_power   = fft * fft / num_samples / num_samples
 
-    # calculate frequency bin width
+    # calculate the frequency bin width
     fft_frequency       = np.fft.rfftfreq(num_samples) * sample_frequency # frequencies of the FFT [MHz]
     frequency_bin_width = fft_frequency[1] - fft_frequency[0]
 
-    # normalize power to frequency bin width to get power spectral density (PSD)
+    # normalize power to frequency bin width to get PSD
     fft_psd = fft_power / frequency_bin_width
 
     return fft_psd
@@ -113,9 +117,14 @@ def main():
     'data/20231121/GRAND.TEST-RAW-10s-ChanXYZ_20dB_DU76_RUN93_test.20231121013803.047_dat.root'
     ]
 
+    file_list = [
+    'data/20231116/GRAND.TEST-RAW-10s-ChanXYZ_20dB_12DUs_RUN92_test.20231116140503.005_dat.root',
+    'data/20231116/GRAND.TEST-RAW-10s-ChanXYZ_20dB_12DUs_RUN92_test.20231116015403.010_dat.root'
+    ]
+
     # compute and store mean FFTs
     for file in file_list:
-        compute1fft(file)
+        get_fft(file)
 
 if __name__ == "__main__":
     with record_run_time():
