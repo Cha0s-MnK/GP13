@@ -33,9 +33,19 @@ def compute_rate(utc_list, windows_channel):
     
     return DunHuang_hour_list, rate_list
 
+def get_gap(hours_list, min_gap):
+    # get gaps in hours larger than min_gap
+    gaps = []
+    for i in range(len(hours_list) - 1):
+        if hours_list[i + 1] - hours_list[i] > min_gap:
+            gaps.append((hours_list[i], hours_list[i + 1]))
+    return gaps
+
 def plot_rate(du, hours_list, rates_list, filtered_hours_list, filtered_rates_list):
     # create a 6x1 layout for the subplots and adjust the figure size
     fig, axes = plt.subplots(6, 1, figsize=(36, 24), dpi=200)
+    fig = plt.figure(figsize=(36, 24), dpi=256)
+    gs = gridspec(6, 1, figure=fig)
 
     # flatten axes array for easier indexing
     axes = axes.flatten()
@@ -69,6 +79,21 @@ def plot_rate(du, hours_list, rates_list, filtered_hours_list, filtered_rates_li
     plt.close(fig)
 
 def plot_channel(ax, hours_list, rates_list, channel, filter_status):
+    # get gaps in the hours
+    gap_list = get_gap(hours_list[channel], min_gap)
+    
+    # define X-limits for broken axes based on the gaps
+    xlims = []
+    start = hours_list[channel][0]
+    for gap_start, gap_stop in gap_list:
+        xlims.append((start, gap_start))
+        start = gap_stop
+    xlims.append((start, hours_list[channel][-1]))
+
+    # create broken axis
+
+    bax = brokenaxes(xlims=xlims, hspace=0.05)
+
     # scatter points and add vertical lines to make the plot more clearly
     ax.scatter(hours_list[channel], rates_list[channel], color='blue', s=9, alpha=0.6)
     ax.vlines(hours_list[channel], 0, rates_list[channel], color='blue', linestyle='solid', linewidth=4, alpha=0.75)
