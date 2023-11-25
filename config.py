@@ -40,6 +40,7 @@ fluctuation         = 1.5 # tolerance of abnormal fluctuation
 linear_gain         = 10 # system's linear gain 
 max_samples         = 512 # maximum number of samples in a transient/pulse
 num_crossings       = 2 # least number of threshold crossings in a time window
+num_run             = 92 # run number of GP13 data
 num_samples         = 2048 # number of samples in a trace
 num_threshold       = 5 # trigger threshold of the transient
 sample_frequency    = 500 # sampling frequency in each trace [MHz]
@@ -73,8 +74,8 @@ noises = {'X': noisesX, 'Y': noisesY, 'Z': noisesZ}
 # DEFINE ARGUMENTS FOR SPECIFIC SCRIPT #
 ########################################
 
-# search.py
-search_data_dir   = 'data/'
+# search_transient.py
+search_data_dir   = f'data/RUN{num_run}'
 search_result_dir = 'result/search/'
 
 # plot_rate.py
@@ -118,12 +119,9 @@ rms_plot_dir   = 'plot/rms/20231028/'
 # GET DUS FROM ROOT/NPZ FILES #
 #################################
 
-def get_root_du(files_str):
+def get_root_dus(file_list):
     # enable GRANDLIB
     import grand.dataio.root_trees as rt
-
-    # get ROOT files
-    file_list = sorted(glob(files_str))
 
     # create an empty set to store unique DUs
     du_set = set()
@@ -137,13 +135,8 @@ def get_root_du(files_str):
     # convert the set to a list in order
     du_list = sorted(list(du_set))
 
-    # only consider good DUs
-    du_list = [du for du in du_list if du in good_du_list]
-
-    # print the list of all used good DUs
-    print(f'\nROOT files contain data from following good DUs: \n{du_list}\n')
-
-    # return DUs
+    # print and return used DUs
+    print(f'\nROOT files contain data from following DUs: \n{du_list}\n')
     return du_list
 
 def get_npz_du(files_str):
@@ -179,12 +172,27 @@ def get_npz_du(files_str):
 # GET TIME AND CONVERT IT #
 ###########################
 
-def get_root_datetime(filename):
+def get_root_datetime(file):
     # assume all ROOT filenames have the same pattern
-    datetime_str  = filename.split('test.')[1].split('.')[0]
+    datetime_str  = file.split('test.')[1].split('.')[0]
     date_time     = datetime.strptime(datetime_str, '%Y%m%d%H%M%S')
     datetime_flat = date_time.strftime('%Y%m%d%H%M%S')
     return date_time, datetime_flat
+
+def get_root_dates(file_list):
+    # create an empty set to store unique dates
+    date_set = set()
+
+    for file in file_list:
+        date_time, datetime_flat = get_root_datetime(file)
+        date_set.add(datetime_flat[:8])
+
+    # convert the set to a list in order
+    date_list = sorted(list(date_set))
+
+    # print and return the dates
+    print(f'\nROOT files contain data from following dates: \n{date_list}\n')
+    return date_list
 
 def get_npz_datetime(filename):
     # assume all NPZ filenames have the same pattern
