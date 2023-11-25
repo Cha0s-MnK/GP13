@@ -34,7 +34,7 @@ start_time = wall_time.perf_counter()
 ####################
 
 adcu2v              = 1.8 / 16384 # convert from ADC units back to Volts
-channels            = ['X', 'Y', 'Z'] # make dictionaries for easier indexing
+channels            = ['X', 'Y', 'Z'] # make dictionaries for easier indexing; X(north-south), Y(east-west), Z(up-down)
 cutoff_frequency    = 50 # cut-off frequency of the high pass filter [MHz]
 fluctuation         = 1.5 # tolerance of abnormal fluctuation
 linear_gain         = 10 # system's linear gain 
@@ -97,13 +97,16 @@ check_plot_dir   = 'plot/check/20231120/'
 # get_fft.py
 fft_result_dir  = 'result/fft'
 
-# plot_fft2.py
-galaxy_sim_dir  = 'data/galaxy'
-galaxy_sim_name = ['VoutRMS2_NSgalaxy.npy', 'VoutRMS2_EWgalaxy.npy', 'VoutRMS2_Zgalaxy.npy']
-fft_plot_dir    = 'plot/fft'
+# plot_fft.py
+galaxy_dir   = 'data/galaxy'
+galaxy_name  = ['VoutRMS2_NSgalaxy.npy', 'VoutRMS2_EWgalaxy.npy', 'VoutRMS2_Zgalaxy.npy']
+fft_plot_dir = 'plot/fft'
 
 # get_amplitude.py
-amplitude_result_dir = 'result/amplitude'
+amplitude_npz_dir = 'result/amplitude'
+
+# plot_amplitude.py
+amplitude_plot_dir = 'plot/amplitude'
 
 # analyze RMS
 rms_data_files = 'data/20231012/*.root'
@@ -115,12 +118,12 @@ rms_plot_dir   = 'plot/rms/20231028/'
 # GET DUS FROM ROOT/NPZ FILES #
 #################################
 
-def get_root_du(files):
+def get_root_du(files_str):
     # enable GRANDLIB
     import grand.dataio.root_trees as rt
 
     # get ROOT files
-    file_list = sorted(glob(files))
+    file_list = sorted(glob(files_str))
 
     # create an empty set to store unique DUs
     du_set = set()
@@ -143,9 +146,9 @@ def get_root_du(files):
     # return DUs
     return du_list
 
-def get_npz_du(files):
+def get_npz_du(files_str):
     # get NPZ files
-    file_list = sorted(glob(files))
+    file_list = sorted(glob(files_str))
 
     # create an empty set to store unique DUs
     du_set = set()
@@ -183,8 +186,9 @@ def get_root_datetime(filename):
     datetime_flat = date_time.strftime('%Y%m%d%H%M%S')
     return date_time, datetime_flat
 
-def get_npz_datetime(basename):
+def get_npz_datetime(filename):
     # assume all NPZ filenames have the same pattern
+    basename      = os.path.basename(filename)
     datetime_str  = basename.split('.')[0].split('_')[-1]
     date_time     = datetime.strptime(datetime_str, '%Y%m%d%H%M%S')
     datetime_flat = date_time.strftime('%Y%m%d%H%M%S')

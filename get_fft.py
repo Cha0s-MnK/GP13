@@ -8,9 +8,9 @@ import grand.dataio.root_trees as rt
 # import everything from the config module
 from config import *
 
-#########################################
-# COMPUTE AND STORE MEAN FFT FOR A FILE #
-#########################################
+########################################
+# COMPUTE MEAN FFT PSD FOR A ROOT FILE #
+########################################
 
 def get_fft(file):
     # get DUs of this ROOT file
@@ -95,7 +95,6 @@ def get_psd(trace):
 
     # normalize power to frequency bin width to get PSD
     fft_psd = fft_power / frequency_bin_width
-
     return fft_psd
 
 #################
