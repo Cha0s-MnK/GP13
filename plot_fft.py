@@ -19,7 +19,7 @@ def plot_fft(day_file,
     night, night_flat = get_npz_datetime(os.path.basename(day_file))
 
     # create a 3x2 layout for the subplots and adjust the figure size
-    fig, axes = plt.subplots(3, 2, figsize=(36, 24), dpi=256)
+    fig, axes = plt.subplots(3, 2, figsize=(30, 20), dpi=256)
 
     # flatten axes array for easier indexing
     axes = axes.flatten()
@@ -45,14 +45,14 @@ def plot_fft(day_file,
         axes[2*id+1].semilogy(galaxy_frequency, galaxy_noise_night[0:240], color='cyan', linestyle='-.', label='Night Galactic Noise')
 
         # set comments on the right-hand side
-        axes[2*id+1].text(1.01, 0.5, f'channel {channel}', verticalalignment='center', horizontalalignment='left', transform=axes[2*id+1].transAxes, fontsize=18, rotation=-90)
+        axes[2*id+1].text(1.04, 0.5, f'channel {channel}', verticalalignment='center', horizontalalignment='left', transform=axes[2*id+1].transAxes, fontsize=18, rotation=-90)
 
     for ax in axes:
         # set Y-scale
         ax.set_yscale('log')
 
         # apply a cutoff by setting the lower limit of the y-axis
-        ax.set_ylim(bottom=1e-13)
+        ax.set_ylim([1e-13, 1e-5])
 
         # add vertical lines at 30MHz and 50MHz
         ax.axvline(x=30, color='purple', linestyle=':', linewidth=2, label='30 MHz')
@@ -61,24 +61,25 @@ def plot_fft(day_file,
         # set X-ticks every 25MHz
         ax.xaxis.set_major_locator(ticker.MultipleLocator(25))
 
-        # enable the grid and legend
+        # enable grid, legend and Y-ticks on both sides
         ax.grid(True)
         ax.legend(frameon=True, fontsize=16)
+        ax.tick_params(axis='y', labelleft=True, labelright=True)
 
     # set common labels and title
     fig.text(0.5, 0.0, 'Frequency / MHz', ha='center', fontsize=18)
     fig.text(0.0, 0.5, 'Mean FFT / $V^2 MHz^{-1}$', va='center', rotation='vertical', fontsize=18)
-    fig.text(0.25, 0.95, 'No Filter', ha='center', fontsize=18)
-    fig.text(0.75, 0.95, f'Filter with Cutoff Frequency = {cutoff_frequency} MHz', ha='center', fontsize=18)
+    fig.text(0.25, 0.93, 'No Filter', ha='center', fontsize=18)
+    fig.text(0.75, 0.93, f'Filter with Cutoff Frequency = {cutoff_frequency} MHz', ha='center', fontsize=18)
     fig.suptitle(f'Mean FFT PSD Analysis for DU{du}'
                  f'\nSample frequency = {sample_frequency} MHz, Day Time = {day}, Night Time = {night}', 
                  fontsize=20)
 
     # adjust the layout: left, bottom, right, top
-    plt.tight_layout(rect=[0.01, 0.01, 1, 0.98])
+    plt.tight_layout(rect=[0.01, 0.01, 1, 0.97])
 
     # save the figure as a PNG file
-    fft_plot_file = os.path.join(fft_plot_dir, f'fft_DU{du}_frequency{sample_frequency}_cutoff{cutoff_frequency}_day{day_flat}_night{night_flat}.png')
+    fft_plot_file = os.path.join(fft_plot_dir, f'FFT_DU{du}_RUN{num_run}_frequency{sample_frequency}_cutoff{cutoff_frequency}_day{day_flat}_night{night_flat}.png')
     plt.savefig(fft_plot_file)
     print(f'Saved: {fft_plot_file}')
 
@@ -89,7 +90,8 @@ def plot_fft(day_file,
 
 def plot_file(axes,
               file,
-              time_status):
+              time_status,
+              line_style='-'):
     # get information of this file
     date_time, datetime_flat = get_npz_datetime(os.path.basename(file))
     npz_file                 = np.load(file, allow_pickle=True)
@@ -107,7 +109,7 @@ def plot_file(axes,
         # original traces will be on left three subplots: 0, 2, 4
         axes[2*id].plot(fft_frequency, mean_fft[channel], label=f'{time_status}', color=colour)
 
-        # filtered traces will be on the last three subplots: 1, 3, 5
+        # original traces will be on left three subplots: 0, 2, 4
         axes[2*id+1].plot(fft_frequency, mean_filtered_fft[channel], label=f'{time_status}', color=colour)
     
     pass
@@ -118,17 +120,18 @@ def plot_file(axes,
 
 # plot mean FFT PSDs for each DU
 def main():
-    # get the string of NPZ files
-    files_str = fft_result_dir + '/*/*.npz'
+    # get NPZ files
+    print(f'\nLoad NPZ files from RUN{num_run}.\n')
+    file_list = sorted(glob(os.path.join(fft_result_dir, '*.npz')))
 
     # get used DUs
-    du_list = get_npz_du(files_str)
+    du_list = get_npz_dus(file_list)
 
     # loop through used DUs
     for du in du_list:
         # get NPZ files for each DU
-        day_file   = os.path.join(fft_result_dir, f'DU{du}', f'fft_DU{du}_frequency500_cutoff50_20231116140503.npz')
-        night_file = os.path.join(fft_result_dir, f'DU{du}', f'fft_DU{du}_frequency500_cutoff50_20231116015403.npz')
+        day_file   = os.path.join(fft_result_dir, f'FFT_DU{du}_RUN{num_run}_frequency{sample_frequency}_cutoff{cutoff_frequency}_20231116140503.npz')
+        night_file = os.path.join(fft_result_dir, f'FFT_DU{du}_RUN{num_run}_frequency{sample_frequency}_cutoff{cutoff_frequency}_20231116015403.npz')
 
         # plot mean FFT PSDs and compare them with galactic noise simulations
         plot_fft(day_file, night_file)

@@ -7,7 +7,7 @@ from contextlib import contextmanager
 from datetime import datetime, time, timedelta
 from glob import glob
 import itertools
-from matplotlib.lines import Line2D
+import json
 import matplotlib.dates as mdates
 from matplotlib.gridspec import GridSpec as gridspec
 import matplotlib.pyplot as plt
@@ -21,7 +21,7 @@ plt.rcParams['xtick.labelsize'] = 14
 plt.rcParams['ytick.direction'] = 'in'
 plt.rcParams['ytick.labelsize'] = 14
 import numpy as np
-np.set_printoptions(threshold=np.inf)
+np.set_printoptions(threshold=np.inf, precision=2, suppress=True, linewidth=128)
 import os
 import re
 from scipy.signal import butter, filtfilt
@@ -36,15 +36,15 @@ start_time = wall_time.perf_counter()
 adcu2v              = 1.8 / 16384 # convert from ADC units back to Volts
 channels            = ['X', 'Y', 'Z'] # make dictionaries for easier indexing; X(north-south), Y(east-west), Z(up-down)
 cutoff_frequency    = 50 # cut-off frequency of the high pass filter [MHz]
-fluctuation         = 1.5 # tolerance of abnormal fluctuation
+std_fluctuation     = 5 # tolerance of abnormal fluctuation for trace standard deviation [times]
 linear_gain         = 10 # system's linear gain 
 max_samples         = 512 # maximum number of samples in a transient/pulse
-num_crossings       = 2 # least number of threshold crossings in a time window
+num_crossings       = 3 # least number of threshold crossings in a time window
 num_run             = 92 # run number of GP13 data
 num_samples         = 2048 # number of samples in a trace
 num_threshold       = 5 # trigger threshold of the transient
 sample_frequency    = 500 # sampling frequency in each trace [MHz]
-standard_separation = 50 # required separation between closest threshold crossings in two pulses [#sample]
+standard_separation = 60 # required separation between closest threshold crossings in two pulses [#sample]
 time_step           = 2 # time step of each sample [ns]
 
 fft_frequency = np.fft.rfftfreq(num_samples) * sample_frequency # frequencies of the FFT [MHz]
@@ -53,34 +53,33 @@ time_axis     = np.arange(num_samples) * time_step # time axis of a trace
 # mask channels to disable channel 0 for GP13 data
 channel_mask = np.array([False, True, True, True])
 
-# all/default dates
-date_list = ['20231011', '20231012', '20231013', '20231014', '20231015', '20231016', '20231017', '20231018', 
-             '20231019', '20231020', '20231021', '20231022', '20231027', '20231028', '20231029', '20231030', 
-             '20231031', '20231115', '20231116', '20231117', '20231119', '20231120', '20231121']
+# all/default dates in RUN92, 93, 94
+date_list = ['20231115', '20231116', '20231117', '20231118', '20231119', '20231120', '20231121', '20231122', '20231123', 
+             '20231124']
 
 # all/default DUs
 du_list = [1010, 1013, 1016, 1017, 1019, 1020, 1021, 1029, 1031, 1032, 1033, 1035, 1041, 1076, 1085]
 
-# good DUs
-good_du_list = [1010, 1013, 1016, 1017, 1019, 1020, 1021, 1029, 1031, 1032, 1033, 1035, 1041, 1076, 1085]
-
-# make a dictionary to store average noise level
-noisesX = {du: 30 for du in good_du_list}
-noisesY = {du: 5 for du in good_du_list}
-noisesZ = {du: 5 for du in good_du_list}
-noises = {'X': noisesX, 'Y': noisesY, 'Z': noisesZ}
-
 ########################################
 # DEFINE ARGUMENTS FOR SPECIFIC SCRIPT #
 ########################################
+
+# random_noise.py
+num_sim = 16384
+
+# get_noise.py
+noise_data_dir   = f'data/RUN{num_run}'
+noise_result_dir = f'result/noise'
+
+# load the noises
+with open(os.path.join(noise_result_dir, f'noise_RUN{num_run}.json'), 'r') as file:
+    noises = json.load(file)
 
 # search_transient.py
 search_data_dir   = f'data/RUN{num_run}'
 search_result_dir = 'result/search/'
 
 # plot_rate.py
-custom_sun      = [Line2D([0], [0], color='red', linestyle='dashed', lw=2), # create custom legend items
-                   Line2D([0], [0], color='orange', linestyle='dashed', lw=2)]
 rate_plot_files = 'result/search/*/*.npz'
 rate_plot_dir   = 'plot/rate/'
 
@@ -88,12 +87,12 @@ rate_plot_dir   = 'plot/rate/'
 fft_plot_dir = 'plot/fft/'
 
 # check.py
-good_du          = 1010
-check_data_files = 'data/20231120/*.root'
-check_result_dir = 'result/check/20231120/'
+check_du         = 1076
+check_data_dir   = f'data/RUN{num_run}'
+check_result_dir = 'result/check'
 
 # plot_check.py
-check_plot_dir   = 'plot/check/20231120/'
+check_plot_dir   = 'plot/check'
 
 # get_fft.py
 fft_result_dir  = 'result/fft'
@@ -104,20 +103,41 @@ galaxy_name  = ['VoutRMS2_NSgalaxy.npy', 'VoutRMS2_EWgalaxy.npy', 'VoutRMS2_Zgal
 fft_plot_dir = 'plot/fft'
 
 # get_amplitude.py
-amplitude_npz_dir = 'result/amplitude'
+amplitude_result_dir = 'result/amplitude'
 
 # plot_amplitude.py
 amplitude_plot_dir = 'plot/amplitude'
 
-# analyze RMS
-rms_data_files = 'data/20231012/*.root'
-rms_result_dir = 'result/rms/20231012'
-rms_npz_files  = 'result/rms/20231028/*.npz'
-rms_plot_dir   = 'plot/rms/20231028/'
+# get_abnormal.py
+abnormal_data_dir   = f'data/RUN{num_run}'
+abnormal_result_dir = 'result/abnormal'
+
+# plot_abnormal.py
+mapping           = {'X': 0, 'Y': 1, 'Z': 2}
+abnormal_plot_dir = 'plot/abnormal'
 
 #################################
 # GET DUS FROM ROOT/NPZ FILES #
 #################################
+
+def get_root_du(file):
+    # enable GRANDLIB
+    import grand.dataio.root_trees as rt
+
+    # create an empty set to store unique DUs
+    du_set = set()
+
+    # loop through all files to get used DUs
+    tadc = rt.TADC(file) # initiate TADC tree of this file
+    tadc.get_entry(0) # get the entry from this file
+    du_set.update(tadc.get_list_of_all_used_dus()) # update the set with all used DUs from this file
+
+    # convert the set to a list in order
+    du_list = sorted(list(du_set))
+
+    # print and return used DUs
+    print(f'\nROOT files contain data from following DUs: \n{du_list}\n')
+    return du_list
 
 def get_root_dus(file_list):
     # enable GRANDLIB
@@ -139,10 +159,7 @@ def get_root_dus(file_list):
     print(f'\nROOT files contain data from following DUs: \n{du_list}\n')
     return du_list
 
-def get_npz_du(files_str):
-    # get NPZ files
-    file_list = sorted(glob(files_str))
-
+def get_npz_dus(file_list):
     # create an empty set to store unique DUs
     du_set = set()
 
@@ -158,9 +175,6 @@ def get_npz_du(files_str):
 
     # convert the set to a list in order
     du_list = sorted(list(du_set))
-
-    # only consider good DUs
-    du_list = [du for du in du_list if du in good_du_list]
 
     # print the list of all used DUs
     print(f'\nNPZ files contain data from following DUs: \n{du_list}\n')
@@ -197,7 +211,7 @@ def get_root_dates(file_list):
 def get_npz_datetime(filename):
     # assume all NPZ filenames have the same pattern
     basename      = os.path.basename(filename)
-    datetime_str  = basename.split('.')[0].split('_')[-1]
+    datetime_str  = basename.split('.npz')[0].split('_')[-1]
     date_time     = datetime.strptime(datetime_str, '%Y%m%d%H%M%S')
     datetime_flat = date_time.strftime('%Y%m%d%H%M%S')
     return date_time, datetime_flat
@@ -219,8 +233,8 @@ def gps2utc1(gps_time):
 ###########################
 
 def high_pass_filter(trace, 
-                     sample_frequency, 
-                     cutoff_frequency):
+                     sample_frequency=sample_frequency, 
+                     cutoff_frequency=cutoff_frequency):
     # Nyquist-Shannon sampling theorem: maximum frequency that can be effectively sampled without aliasing when the signal is sampled at a given rate
     Nyquist_frequency = 0.5 * sample_frequency
 
@@ -234,19 +248,22 @@ def search_windows(trace,
                    standard_separation=standard_separation,
                    num_crossings=num_crossings,
                    max_samples=max_samples,
+                   std_fluctuation=std_fluctuation,
                    sample_frequency=sample_frequency, 
                    cutoff_frequency=cutoff_frequency):
     # apply the high-pass filter if filter is set to 'on'
     if filter == 'on':
-        trace = high_pass_filter(trace, sample_frequency, cutoff_frequency)
+        trace = high_pass_filter(trace=trace, 
+                                 sample_frequency=sample_frequency, 
+                                 cutoff_frequency=cutoff_frequency)
 
     # stop if there are no transients
     exceed_threshold = np.abs(trace) > threshold
     if np.sum(exceed_threshold) < num_crossings:
         return []
 
-    # stop if this is a bad trace
-    if np.std(trace) > fluctuation * threshold / num_threshold:
+    # stop if this trace has an abnormal fluctuation of standard deviation
+    if np.std(trace) > (std_fluctuation * threshold / num_threshold):
         return []
     
     # find trace positions where threshold is exceeded
