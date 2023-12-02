@@ -36,15 +36,15 @@ start_time = wall_time.perf_counter()
 adcu2v              = 1.8 / 16384 # convert from ADC units back to Volts
 channels            = ['X', 'Y', 'Z'] # make dictionaries for easier indexing; X(north-south), Y(east-west), Z(up-down)
 cutoff_frequency    = 50 # cut-off frequency of the high pass filter [MHz]
-std_fluctuation     = 5 # tolerance of abnormal fluctuation for trace standard deviation [times]
+std_fluctuation     = 1.5 # tolerance of abnormal fluctuation for trace standard deviation [times]
 linear_gain         = 10 # system's linear gain 
 max_samples         = 512 # maximum number of samples in a transient/pulse
 num_crossings       = 3 # least number of threshold crossings in a time window
-num_run             = 92 # run number of GP13 data
+num_run             = 94 # run number of GP13 data
 num_samples         = 2048 # number of samples in a trace
 num_threshold       = 5 # trigger threshold of the transient
 sample_frequency    = 500 # sampling frequency in each trace [MHz]
-standard_separation = 60 # required separation between closest threshold crossings in two pulses [#sample]
+standard_separation = 50 # required separation between closest threshold crossings in two pulses [#sample]
 time_step           = 2 # time step of each sample [ns]
 
 fft_frequency = np.fft.rfftfreq(num_samples) * sample_frequency # frequencies of the FFT [MHz]
@@ -64,6 +64,10 @@ du_list = [1010, 1013, 1016, 1017, 1019, 1020, 1021, 1029, 1031, 1032, 1033, 103
 # DEFINE ARGUMENTS FOR SPECIFIC SCRIPT #
 ########################################
 
+data_dir   = 'data'
+result_dir = 'result'
+plot_dir   = 'plot'
+
 # random_noise.py
 num_sim = 16384
 
@@ -76,8 +80,9 @@ with open(os.path.join(noise_result_dir, f'noise_RUN{num_run}.json'), 'r') as fi
     noises = json.load(file)
 
 # search_transient.py
-search_data_dir   = f'data/RUN{num_run}'
-search_result_dir = 'result/search/'
+search_data_dir     = f'data/RUN{num_run}'
+save_dir   = 'result/search/'
+duration_result_dir = 'result/duration'
 
 # plot_rate.py
 rate_plot_files = 'result/search/*/*.npz'
@@ -111,10 +116,15 @@ amplitude_plot_dir = 'plot/amplitude'
 # get_abnormal.py
 abnormal_data_dir   = f'data/RUN{num_run}'
 abnormal_result_dir = 'result/abnormal'
+num_total_traces    = 0
+num_abnormal        = 0
 
 # plot_abnormal.py
-mapping           = {'X': 0, 'Y': 1, 'Z': 2}
+channel_mapping   = {'X': 0, 'Y': 1, 'Z': 2}
 abnormal_plot_dir = 'plot/abnormal'
+
+# plot_duration
+duration_plot_dir = 'plot/duration'
 
 #################################
 # GET DUS FROM ROOT/NPZ FILES #
@@ -170,7 +180,7 @@ def get_npz_dus(file_list):
         print(basename)
     
         # split the filename on underscore
-        du = int(basename.split('_')[1][2:])
+        du = int(basename.split('_')[2][2:])
         du_set.add(du)
 
     # convert the set to a list in order
@@ -295,6 +305,77 @@ def search_windows(trace,
             window_list.append([start_id, stop_id])
 
     return window_list
+
+def rough_search_windows(trace,
+                         threshold,
+                         filter='on',
+                         standard_separation=standard_separation,
+                         num_crossings=num_crossings,
+                         sample_frequency=sample_frequency, 
+                         cutoff_frequency=cutoff_frequency):
+    # apply the high-pass filter if filter is set to 'on'
+    if filter == 'on':
+        trace = high_pass_filter(trace=trace, 
+                                 sample_frequency=sample_frequency, 
+                                 cutoff_frequency=cutoff_frequency)
+
+    # stop if there are no transients
+    exceed_threshold = np.abs(trace) > threshold
+    if np.sum(exceed_threshold) < num_crossings:
+        return []
+    
+    # find trace positions where threshold is exceeded
+    crossing_ids = np.flatnonzero(exceed_threshold)
+    
+    # find the separations between consecutive threshold crossings
+    crossing_separations = np.diff(crossing_ids)
+
+    # locate pulse indices in threshold crossing indices
+    pulse_ids = np.flatnonzero(crossing_separations > standard_separation)
+    pulse_ids = np.concatenate(([-1], pulse_ids, [len(crossing_ids)-1]))
+    
+    # preallocate the return list for time windows
+    window_list = []
+
+    # search all transients/pulses
+    half_separation = standard_separation // 2
+    for i in range(len(pulse_ids)-1):
+        # get the start index of current pulse
+        start_id = crossing_ids[pulse_ids[i]+1] - half_separation
+        start_id = max(0, start_id) # fix the 1st pulse
+
+        # get the stop index of current pulse
+        stop_id = crossing_ids[pulse_ids[i+1]] + half_separation
+        stop_id = min(len(trace)-1, stop_id) # fix the last pulse
+
+        # check if this time window contains enough crossings
+        if np.sum(exceed_threshold[start_id:stop_id+1]) >= num_crossings:
+            window_list.append([start_id, stop_id])
+
+    return window_list
+
+#######
+# PSD #
+#######
+
+# get FFT PSD of 1 trace
+def get_psd(trace):
+    # get FFTs
+    fft = np.abs(np.fft.rfft(trace))
+
+    # convert FFT from ADC units to Volts and correct for system linear gain
+    fft = fft * adcu2v / linear_gain
+
+    # compute power of FFT and normalize it to number of samples in a trace
+    fft_power   = fft * fft / num_samples / num_samples
+
+    # compute frequency bin width
+    frequency_bin_width = fft_frequency[1] - fft_frequency[0]
+
+    # normalize the power to frequency bin width to get the PSD
+    fft_psd = fft_power / frequency_bin_width
+
+    return fft_psd
 
 #######################
 # RECORD RUNNING TIME #
