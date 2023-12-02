@@ -126,9 +126,9 @@ abnormal_plot_dir = 'plot/abnormal'
 # plot_duration
 duration_plot_dir = 'plot/duration'
 
-#################################
+###############################
 # GET DUS FROM ROOT/NPZ FILES #
-#################################
+###############################
 
 def get_root_du(file):
     # enable GRANDLIB
@@ -302,6 +302,59 @@ def search_windows(trace,
 
         # check if this time window contains enough crossings and does not exceed maximum number of samples
         if np.sum(exceed_threshold[start_id:stop_id+1]) >= num_crossings and (stop_id - start_id + 1) <= max_samples:
+            window_list.append([start_id, stop_id])
+
+    return window_list
+
+def search_windows_test(trace,
+                   threshold,
+                   filter='off',
+                   standard_separation=standard_separation,
+                   num_crossings=num_crossings,
+                   std_fluctuation=std_fluctuation,
+                   sample_frequency=sample_frequency, 
+                   cutoff_frequency=cutoff_frequency):
+    # apply the high-pass filter if filter is set to 'on'
+    if filter == 'on':
+        trace = high_pass_filter(trace=trace, 
+                                 sample_frequency=sample_frequency, 
+                                 cutoff_frequency=cutoff_frequency)
+
+    # stop if there are no transients
+    exceed_threshold = np.abs(trace) > threshold
+    if np.sum(exceed_threshold) < num_crossings:
+        return []
+
+    # stop if this trace is abnormal/noisy
+    if max(get_psd(trace)) > 1e-7:
+        return []
+    
+    # find trace positions where threshold is exceeded
+    crossing_ids = np.flatnonzero(exceed_threshold)
+    
+    # find the separations between consecutive threshold crossings
+    crossing_separations = np.diff(crossing_ids)
+
+    # locate pulse indices in threshold crossing indices
+    pulse_ids = np.flatnonzero(crossing_separations > standard_separation)
+    pulse_ids = np.concatenate(([-1], pulse_ids, [len(crossing_ids)-1]))
+    
+    # preallocate the return list for time windows
+    window_list = []
+
+    # search all transients/pulses
+    half_separation = standard_separation // 2
+    for i in range(len(pulse_ids)-1):
+        # get the start index of current pulse
+        start_id = crossing_ids[pulse_ids[i]+1] - half_separation
+        start_id = max(0, start_id) # fix the 1st pulse
+
+        # get the stop index of current pulse
+        stop_id = crossing_ids[pulse_ids[i+1]] + half_separation
+        stop_id = min(len(trace)-1, stop_id) # fix the last pulse
+
+        # check if this time window contains enough crossings and does not exceed maximum number of samples
+        if np.sum(exceed_threshold[start_id:stop_id+1]) >= num_crossings:
             window_list.append([start_id, stop_id])
 
     return window_list
