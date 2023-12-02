@@ -54,11 +54,10 @@ time_axis     = np.arange(num_samples) * time_step # time axis of a trace
 channel_mask = np.array([False, True, True, True])
 
 # all/default dates in RUN92, 93, 94
-date_list = ['20231115', '20231116', '20231117', '20231118', '20231119', '20231120', '20231121', '20231122', '20231123', 
-             '20231124']
+# date_list = ['20231115', '20231116', '20231117', '20231118', '20231119', '20231120', '20231121', '20231122', '20231123', '20231124']
 
 # all/default DUs
-du_list = [1010, 1013, 1016, 1017, 1019, 1020, 1021, 1029, 1031, 1032, 1033, 1035, 1041, 1076, 1085]
+check_du_list = [1010, 1013, 1016, 1017, 1019, 1020, 1021, 1029, 1031, 1032, 1033, 1035, 1041, 1076, 1085]
 
 ########################################
 # DEFINE ARGUMENTS FOR SPECIFIC SCRIPT #
@@ -218,13 +217,13 @@ def get_root_dates(file_list):
     print(f'\nROOT files contain data from following dates: \n{date_list}\n')
     return date_list
 
-def get_npz_datetime(filename):
+def get_npz_DHtime(filename):
     # assume all NPZ filenames have the same pattern
-    basename      = os.path.basename(filename)
-    datetime_str  = basename.split('.npz')[0].split('_')[-1]
-    date_time     = datetime.strptime(datetime_str, '%Y%m%d%H%M%S')
-    datetime_flat = date_time.strftime('%Y%m%d%H%M%S')
-    return date_time, datetime_flat
+    basename    = os.path.basename(filename)
+    DHtime_str  = basename.split('.npz')[0].split('_')[-1]
+    DHtime      = datetime.strptime(DHtime_str, '%Y%m%d%H%M%S')
+    DHtime_flat = DHtime.strftime('%Y%m%d%H%M%S')
+    return DHtime, DHtime_flat
 
 # convert GPS time to UTC
 def gps2utc(gps_times):
@@ -407,11 +406,11 @@ def rough_search_windows(trace,
 
     return window_list
 
-#######
-# PSD #
-#######
+###############
+# COMPUTE PSD #
+###############
 
-# get FFT PSD of 1 trace
+# get PSD of 1 trace
 def get_psd(trace):
     # get FFTs
     fft = np.abs(np.fft.rfft(trace))

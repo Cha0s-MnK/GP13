@@ -5,29 +5,30 @@
 # import everything from the config module
 from config import *
 
+# create the save directory if it does not exist
+save_dir = os.path.join(plot_dir, 'trace')
+os.makedirs(save_dir, exist_ok=True)
+
 ##################
 # CORE FUNCTIONS #
 ##################
 
 # plot the traces and corresponding PSDs for 1 entry
 def plot1npz_trace(file):
-    # get used DU of this file
-    du = int(os.path.basename(file).split('_')[2][2:])
-
-    # get the date and time of this file
-    date_time, datetime_flat = get_npz_datetime(os.path.basename(file))
-    hour                     = date_time.hour
-
     # get information of this file
-    npz_file      = np.load(file, allow_pickle=True)
-    traces        = {channel: npz_file[f'traces{channel}'] for channel in channels}
-    filter_traces = {channel: npz_file[f'filter_traces{channel}'] for channel in channels}
-    psds          = {channel: npz_file[f'psds{channel}'] for channel in channels}
-    filter_psds   = {channel: npz_file[f'filter_psds{channel}'] for channel in channels}
+    du                  = int(os.path.basename(file).split('_')[2][2:])
+    trace_wanted        = os.path.basename(file).split('-')[0]
+    DHtime, DHtime_flat = get_npz_DHtime(os.path.basename(file))
+    hour                = DHtime.hour
+    npz_file            = np.load(file, allow_pickle=True)
+    traces              = {channel: npz_file[f'traces{channel}'] for channel in channels}
+    filter_traces       = {channel: npz_file[f'filter_traces{channel}'] for channel in channels}
+    psds                = {channel: npz_file[f'psds{channel}'] for channel in channels}
+    filter_psds         = {channel: npz_file[f'filter_psds{channel}'] for channel in channels}
 
     # adjust the figure size and create a GridSpec layout for the subplots
-    fig = plt.figure(figsize=(64, 32), dpi=180)
-    gs = gridspec(12, 2)
+    fig = plt.figure(figsize=(60, 32), dpi=165)
+    gs  = gridspec(12, 2)
 
     # make dictionaries for easier indexing
     axes   = {}
@@ -59,14 +60,15 @@ def plot1npz_trace(file):
         subplot_psd(ax=axes[f'{base_id + 8:02}'], channel=channel, psd=filter_psds[channel], hour=hour)
 
     # adjust the layout: left, bottom, right, top
-    plt.tight_layout(rect=[0.01, 0.01, 1, 0.98])
+    plt.tight_layout(rect=[0.01, 0.01, 1, 0.96])
 
-    # create the save directory if it does not exist
-    save_dir = os.path.join(plot_dir, 'trace')
-    os.makedirs(save_dir, exist_ok=True)
+    # set common labels and title
+    #fig.text(0.5, 0.0, 'Frequency / MHz', ha='center', fontsize=18)
+    #fig.text(0.0, 0.5, 'Mean FFT / $V^2 MHz^{-1}$', va='center', rotation='vertical', fontsize=18)
+    fig.suptitle(f'Traces, Filtered Traces and Corresponding PSDs\nRUN{num_run}, DU{du}, Time = {DHtime}, Sample frequency = {sample_frequency} MHz, Cut-off Frequency = {cutoff_frequency} MHz', fontsize=20)
 
     # save the figure as a PNG file
-    save_file = os.path.join(save_dir, f'abnormal-trace_RUN{num_run}_DU{du}_frequency{sample_frequency}_cutoff{cutoff_frequency}_{datetime_flat}.png')
+    save_file = os.path.join(save_dir, f'{trace_wanted}-trace_RUN{num_run}_DU{du}_frequency{sample_frequency}_cutoff{cutoff_frequency}_{DHtime_flat}.png')
     plt.savefig(save_file)
     print(f'Saved: {save_file}')
 
@@ -126,7 +128,7 @@ def subplot_psd(ax, channel, psd, hour):
 
     # set Y-scale and Y-limit
     ax.set_yscale('log')
-    ax.set_ylim(bottom=1e-15)
+    ax.set_ylim(bottom=1e-14)
 
     # set labels and title
     ax.set_xlabel('Frequency / MHz', fontsize=16)
@@ -205,6 +207,40 @@ def get_mean_psd(result_dir):
         # close the figure to free up memory
         plt.close(fig)
 
+def plot_channel(ax, traces, channel, filter_status):
+    # search for time windows
+    threshold   = num_threshold * noises[channel][str(check_du)]
+    window_list = search_windows(trace=traces[channel], 
+                                 threshold=threshold, 
+                                 filter=filter_status)
+
+    # filter trace based on filter status
+    if filter_status == 'on':
+        trace = high_pass_filter(traces[channel], sample_frequency, cutoff_frequency)
+    else:
+        trace = traces[channel]
+
+    # plot the trace
+    ax.plot(time_axis, trace, color='blue', label=f'trace')
+
+    # highlight the time windows
+    for id, window in enumerate(window_list):
+        start_id, stop_id = window
+        start_time        = start_id * time_step
+        stop_time         = stop_id * time_step
+        if id == 0:
+            ax.axvspan(start_time, stop_time, color='green', alpha=0.3, label='Time Window(s)')
+        else:
+            ax.axvspan(start_time, stop_time, color='green', alpha=0.3)
+
+        # annotate time windows
+        centre_time = (start_time + stop_time) / 2
+        ylim = ax.get_ylim()
+        ax.text(centre_time, 1.02*ylim[1], f'[{start_time}, {stop_time}]', color='black', fontsize=10, ha='center', va='bottom')
+
+    # set title on the right-hand side
+    ax.text(1.02, 0.5, f'channel {channel}, filter {filter_status}', verticalalignment='center', horizontalalignment='left', transform=ax.transAxes, fontsize=16, rotation=-90)
+
 #################
 # MAIN FUNCTION #
 #################
@@ -212,6 +248,7 @@ def get_mean_psd(result_dir):
 # plot mean FFT PSDs for each DU
 def main():
     # get NPZ files
+    print(f'\nLoad NPZ files from RUN{num_run}.\n')
     file_list = sorted(glob(os.path.join(result_dir, 'trace', f'*RUN{num_run}*.npz')))
     num_files = len(file_list)
 

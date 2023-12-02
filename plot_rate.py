@@ -5,8 +5,6 @@
 # import everything from the config module
 from config import *
 
-min_gap = timedelta(hours=6)
-
 ################################################
 # COMPUTE AND PLOT TRANSIENT RATES FOR EACH DU #
 ################################################
@@ -58,7 +56,7 @@ def plot_du_rate():
 
 def get_du_rate_Nov(du):
     # update NPZ files according to current DU
-    file_list = sorted(glob(os.path.join(search_result_dir, f'*/*DU{du}_RUN{num_run}*.npz')))
+    file_list = sorted(glob(os.path.join(save_dir, f'*/*DU{du}_RUN{num_run}*.npz')))
 
     # make dictionaries for easier indexing and initiate them with empty lists
     hours_list = {channel: [] for channel in channels}
@@ -110,7 +108,8 @@ def compute_rate(utc_list, windows_channel):
         utc_hour_list.append(datetime.combine(date, time(hour=hour)))
         duration = len(windows) * num_samples * time_step # total time of traces
         windows  = list(itertools.chain(*windows)) # filter out empty time windows and reformat windows
-        rate_list.append(len(windows) / duration * 1e6) # GHz --> kHz
+        # [GHz] --> [Hz]
+        rate_list.append(len(windows) / duration * 1e9)
 
     # convert UTCs to DunHuang local times
     DunHuang_hour_list = [utc_hour + timedelta(hours=8) for utc_hour in utc_hour_list]
@@ -163,7 +162,7 @@ def plot_du_rate_Nov(du, hours_list, rates_list):
 
     # set common labels and title
     fig.text(0.5, 0.0, 'DunHuang Time in Date and Hour', ha='center', fontsize=18)
-    fig.text(0.0, 0.5, 'Transient or Pulse Rate / kHz', va='center', rotation='vertical', fontsize=18)
+    fig.text(0.0, 0.5, 'Transient or Pulse Rate / Hz', va='center', rotation='vertical', fontsize=18)
     plt.suptitle(f'Time Evolution of Transient Rates for DU{du}, \nThreshold = {num_threshold}, Max Separation = {standard_separation}, Min Crossing = {num_crossings}, Max Samples = {max_samples}, Max Fluctuation = {std_fluctuation}, Sample Frequency = {sample_frequency}, Cutoff frequency = {cutoff_frequency}', fontsize=20)
 
     # adjust the layout: left, bottom, right, top
@@ -249,21 +248,22 @@ def plot_channel_Nov(ax,
 
     # set Y-scale
     ax.set_yscale('log')
-    ax.set_ylim([5e-2, 1e3])
-
-    # enable Y-ticks on both sides
-    ax.tick_params(axis='y', labelleft=True, labelright=True)
+    ax.set_ylim([5e-2, 1e6])
 
     # set the title on the right-hand side
     ax.text(1.01, 0.5, f'channel {channel} ', verticalalignment='center', horizontalalignment='left', transform=ax.transAxes, fontsize=16, rotation=-90)
     
     # set X-ticks
-    ax.set_xlim(datetime(2023, 11, 15, 12), datetime(2023, 11, 25, 0))
+    ax.set_xlim(datetime(2023, 11, 19, 0), datetime(2023, 11, 25, 0))
     ax.xaxis.set_major_locator(mdates.HourLocator(interval=6))
     ax.xaxis.set_major_formatter(mdates.DateFormatter('%m-%d %H:%M'))
     for tick in ax.get_xticklabels():
         tick.set_rotation(30)
-        
+    
+    # add horizontal line at 678Hz (1 transient/pulse in 1 hour)
+    xlim = ax.get_xlim()
+    ax.hlines(678, xmin=xlim[0], xmax=xlim[1], color='green', linestyle=':', label='1 in 1 hour')
+
     # add vertical lines at sunrise and sunset
     ylim = ax.get_ylim()
     ax.vlines([datetime(2023, 11, 16, 8, 30),
@@ -278,7 +278,7 @@ def plot_channel_Nov(ax,
                ymin=ylim[0], 
                ymax=ylim[1], 
                color='red', 
-               linestyles='dashed', 
+               linestyle='dashed', 
                label='sunrise')
     ax.vlines([datetime(2023, 11, 15, 18, 30),
                datetime(2023, 11, 16, 18, 30),
@@ -296,9 +296,10 @@ def plot_channel_Nov(ax,
                linestyles='dashed', 
                label='sunset')
 
-    # enable the grid and legend
+    # enable grid, legend and Y-ticks on both sides
     ax.grid(True)
-    ax.legend(frameon=True, fontsize=16)
+    ax.legend(frameon=True, loc='upper fight', fontsize=16)
+    ax.tick_params(axis='y', labelleft=True, labelright=True)
 
     pass
 
@@ -310,7 +311,7 @@ def plot_channel_Nov(ax,
 def main():
     # get NPZ files
     print(f'\nLoad NPZ files from RUN{num_run}.\n')
-    file_list = sorted(glob(os.path.join(search_result_dir, f'*/*RUN{num_run}*.npz')))
+    file_list = sorted(glob(os.path.join(save_dir, f'*/*RUN{num_run}*.npz')))
 
     # get used DUs
     du_list = get_npz_dus(file_list)
