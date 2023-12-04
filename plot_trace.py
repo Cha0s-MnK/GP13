@@ -6,7 +6,7 @@
 from config import *
 
 # create the save directory if it does not exist
-save_dir = os.path.join(plot_dir, 'trace')
+save_dir = os.path.join(plot_dir, f'{trace_wanted}-trace')
 os.makedirs(save_dir, exist_ok=True)
 
 ##################
@@ -80,24 +80,41 @@ def subplot_trace(ax, channel, trace, du, filter_status):
     # plot the trace
     ax.plot(time_axis, trace, color='blue', label=f'trace')
 
-    # add horizontal dashed lines at +/-threshold of the trace
-    threshold = num_threshold * noises[channel][str(du)]
-    ax.axhline(y=threshold, color='red', linestyle='--', label=f'+/- threshold={threshold:.2f}')
-    ax.axhline(y=-threshold, color='red', linestyle='--')
-
     # add horizontal dashed lines at +/-STD of the trace
     std = np.std(trace)
     ax.axhline(y=std, color='orange', linestyle='--', label=f'+/- STD={std:.2f}')
     ax.axhline(y=-std, color='orange', linestyle='--')
 
+    # add horizontal dashed lines at +/-threshold of the trace
+    threshold = num_threshold * std
+    ax.axhline(y=threshold, color='red', linestyle='--', label=f'+/- threshold={threshold:.2f}')
+    ax.axhline(y=-threshold, color='red', linestyle='--')
+
+    if trace_wanted == 'pulse' and filter_status == 'on':
+        # highlight the transient/pulse windows
+        window_list = search_windows_test(trace=trace, num_threshold=num_threshold, filter_status='off')
+        for window_id, window in enumerate(window_list):
+            start_id, stop_id = window
+            start_time        = start_id * time_step
+            stop_time         = stop_id * time_step
+            if window_id == 0:
+                ax.axvspan(start_time, stop_time, color='green', alpha=0.3, label='transient/pulse window(s)')
+            else:
+                ax.axvspan(start_time, stop_time, color='green', alpha=0.3)
+
+            # annotate time windows
+            centre_time = (start_time + stop_time) / 2
+            ylim = ax.get_ylim()
+            ax.text(centre_time, 1.02*ylim[1], f'[{start_time}, {stop_time}]', color='black', fontsize=14, ha='center', va='bottom')
+
     # set X-ticks
     ax.set_xlim([min(time_axis), max(time_axis)])
-    ax.set_xticks(np.arange(min(time_axis), max(time_axis)+1, 250))
+    ax.set_xticks(np.arange(min(time_axis), max(time_axis)+1, 200))
 
     # set labels and title
     ax.set_xlabel('Time / ns', fontsize=16)
     ax.set_ylabel('ADC units', fontsize=16)
-    ax.set_title(f'channel {channel} with filter {filter_status}', fontsize=18)
+    ax.set_title(f'channel {channel} with filter {filter_status}', fontsize=18, pad=20)
 
     # enable grid, legend and Y-ticks on both sides
     ax.grid(True)
@@ -207,40 +224,6 @@ def get_mean_psd(result_dir):
         # close the figure to free up memory
         plt.close(fig)
 
-def plot_channel(ax, traces, channel, filter_status):
-    # search for time windows
-    threshold   = num_threshold * noises[channel][str(check_du)]
-    window_list = search_windows(trace=traces[channel], 
-                                 threshold=threshold, 
-                                 filter=filter_status)
-
-    # filter trace based on filter status
-    if filter_status == 'on':
-        trace = high_pass_filter(traces[channel], sample_frequency, cutoff_frequency)
-    else:
-        trace = traces[channel]
-
-    # plot the trace
-    ax.plot(time_axis, trace, color='blue', label=f'trace')
-
-    # highlight the time windows
-    for id, window in enumerate(window_list):
-        start_id, stop_id = window
-        start_time        = start_id * time_step
-        stop_time         = stop_id * time_step
-        if id == 0:
-            ax.axvspan(start_time, stop_time, color='green', alpha=0.3, label='Time Window(s)')
-        else:
-            ax.axvspan(start_time, stop_time, color='green', alpha=0.3)
-
-        # annotate time windows
-        centre_time = (start_time + stop_time) / 2
-        ylim = ax.get_ylim()
-        ax.text(centre_time, 1.02*ylim[1], f'[{start_time}, {stop_time}]', color='black', fontsize=10, ha='center', va='bottom')
-
-    # set title on the right-hand side
-    ax.text(1.02, 0.5, f'channel {channel}, filter {filter_status}', verticalalignment='center', horizontalalignment='left', transform=ax.transAxes, fontsize=16, rotation=-90)
-
 #################
 # MAIN FUNCTION #
 #################
@@ -249,7 +232,7 @@ def plot_channel(ax, traces, channel, filter_status):
 def main():
     # get NPZ files
     print(f'\nLoad NPZ files from RUN{num_run}.\n')
-    file_list = sorted(glob(os.path.join(result_dir, 'trace', f'*RUN{num_run}*.npz')))
+    file_list = sorted(glob(os.path.join(result_dir, f'{trace_wanted}-trace', f'{trace_wanted}-trace*RUN{num_run}*.npz')))
     num_files = len(file_list)
 
     # get used DUs
