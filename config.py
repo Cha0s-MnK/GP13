@@ -8,6 +8,7 @@ from datetime import datetime, time, timedelta
 from glob import glob
 import itertools
 import json
+from matplotlib.colors import LogNorm
 import matplotlib.dates as mdates
 from matplotlib.gridspec import GridSpec as gridspec
 import matplotlib.pyplot as plt
@@ -29,18 +30,18 @@ from scipy.stats import norm
 import time as wall_time
 start_time = wall_time.perf_counter()
 
-####################
-# DEFINE ARGUMENTS #
-####################
+#####################
+# DEFAULT ARGUMENTS #
+#####################
 
 adcu2v              = 1.8 / 16384 # convert from ADC units back to Volts
 channels            = ['X', 'Y', 'Z'] # make dictionaries for easier indexing; X(north-south), Y(east-west), Z(up-down)
+channel_mapping     = {'X': 0, 'Y': 1, 'Z': 2}
+channel_mask        = np.array([False, True, True, True]) # mask channels to disable channel 0 for GP13 data
 cutoff_frequency    = 50 # cut-off frequency of the high pass filter [MHz]
-std_fluctuation     = 1.5 # tolerance of abnormal fluctuation for trace standard deviation [times]
-linear_gain         = 10 # system's linear gain 
-max_samples         = 512 # maximum number of samples in a transient/pulse
+linear_gain         = 10 # linear gain of the system
 num_crossings       = 6 # least number of threshold crossings in a time window
-num_run             = 94 # run number of GP13 data
+num_run             = 92 # run number of GP13 data
 num_samples         = 2048 # number of samples in a trace
 num_threshold       = 4 # trigger threshold of the transient
 sample_frequency    = 500 # sampling frequency in each trace [MHz]
@@ -50,32 +51,38 @@ time_step           = 2 # time step of each sample [ns]
 fft_frequency = np.fft.rfftfreq(num_samples) * sample_frequency # frequencies of the FFT [MHz]
 time_axis     = np.arange(num_samples) * time_step # time axis of a trace
 
-# mask channels to disable channel 0 for GP13 data
-channel_mask = np.array([False, True, True, True])
+######################
+# RUNNING PARAMETERS #
+######################
 
-# all/default dates
-date_list_RUN92 = ['20231115', '20231116', '20231117', '20231118', '20231119', '20231120', '20231121', '20231122', '20231123', '20231124', '20231125', '20231126', '20231127', '20231128']
-date_list_RUN93 = ['20231117', '20231118', '20231119', '20231120', '20231121', '20231122', '20231123', '20231124', '20231125', '20231126', '20231127', '20231128']
-date_list_RUN94 = ['20231118', '20231121', '20231122', '20231123', '20231124', '20231125']
+run_list = [93, 94] # run numbers of GP13 data
+nums_run = '-'.join(str(num_run) for num_run in run_list)
 
-# all/default DUs
-du_list_RUN92 = [1010, 1013, 1017, 1019, 1020, 1021, 1029, 1032, 1035, 1041, 1076, 1085]
-du_list_RUN93 = [1076, 1085]
-du_list_RUN94 = [1085]
+trace_wanted = 'all'
+wanted_trace = 'all'
+
+du_list = [1076, 1085]
 
 # save directories
 data_dir   = 'data'
 result_dir = 'result'
 plot_dir   = 'plot'
 
+# all/default dates
+# date_list_RUN92 = ['20231117', '20231118', '20231119', '20231120', '20231121', '20231122', '20231123', '20231124', '20231125', '20231126', '20231127', '20231128']
+# date_list_RUN93 = ['20231118', '20231119', '20231120', '20231121', '20231122', '20231123', '20231124', '20231125', '20231126', '20231127', '20231128']
+# date_list_RUN94 = ['20231121', '20231122', '20231123', '20231124', '20231125']
+
+# all/default DUs
+# du_list_RUN92 = [1010, 1013, 1017, 1019, 1020, 1021, 1029, 1032, 1035, 1041]
+# du_list_RUN93 = [1076]
+# du_list_RUN94 = [1085]
+
 ########################################
 # DEFINE ARGUMENTS FOR SPECIFIC SCRIPT #
 ########################################
 
 # get_trace.py & plot_trace.py
-check_du_list   = [1076, 1085]
-trace_wanted    = 'abnormal'
-channel_mapping = {'X': 0, 'Y': 1, 'Z': 2}
 
 # random_noise.py
 num_sim = 16384
@@ -90,8 +97,6 @@ with open(os.path.join(noise_result_dir, f'noise_RUN{num_run}.json'), 'r') as fi
 
 # search_transient.py
 search_data_dir     = f'data/RUN{num_run}'
-save_dir   = 'result/search/'
-duration_result_dir = 'result/duration'
 
 # plot_rate.py
 rate_plot_files = 'result/search/*/*.npz'
@@ -111,6 +116,19 @@ fft_plot_dir = 'plot/fft'
 ###############################
 # GET DUS FROM ROOT/NPZ FILES #
 ###############################
+
+# get ROOT files according to the given name
+def get_root_files(run_list=run_list, date='*'):
+    total_file_list = []
+
+    # loop through run numbers
+    for num_run in run_list:
+        file_list = sorted(glob(os.path.join(data_dir, f'RUN{num_run}', f'*RUN{num_run}_test.{date}*.root')))
+        num_files = len(file_list)
+        print(f'Load {num_files} ROOT files from RUN{num_run}.')
+        total_file_list.extend(file_list)
+
+    return total_file_list
 
 def get_root_dus(file):
     # enable GRANDLIB
@@ -143,65 +161,117 @@ def get_roots_dus(file_list):
     du_list = sorted(list(du_set))
 
     # print and return used DUs
-    print(f'\nROOT files contain data from following DUs: \n{du_list}\n')
+    print(f'ROOT files contain data from following DUs: \n{du_list}')
     return du_list
 
-def get_npz_dus(file_list):
-    # create an empty set to store unique DUs
-    du_set = set()
+#####################
+# GET INFO FROM NPZ #
+#####################
 
-    # show all NPZ files and extract DUs
-    print('\nPlot with data from following NPZ files:\n')
-    for file in file_list:
-        basename = os.path.basename(file)
-        print(basename)
+def get_npz_files(name, date_list=False, du_list=False):
+    file_list = []
+
+    if date_list and du_list:
+        for num_run in run_list: # 'run_list' is always required
+            for date in date_list:
+                for du in du_list:
+                    files = sorted(glob(os.path.join(result_dir, f'{name}', f'{name}_RUN{num_run}_DU{du}*{date}.npz')))
+                    file_list.extend(files)
+                    print(f'Load {len(files)} NPZ files of DU{du} on {date} from RUN{num_run}.')
+
+    elif date_list and du_list == False:
+        for num_run in run_list:
+            for date in date_list:
+                files = sorted(glob(os.path.join(result_dir, f'{name}', f'{name}_RUN{num_run}*{date}.npz')))
+                file_list.extend(files)
+                print(f'Load {len(files)} NPZ files on {date} from RUN{num_run}.')
     
-        # split the filename on underscore
-        du = int(basename.split('_')[2][2:])
+    elif date_list == False and du_list:
+        for num_run in run_list:
+            for du in du_list:
+                files = sorted(glob(os.path.join(result_dir, f'{name}', f'{name}_RUN{num_run}_DU{du}*.npz')))
+                file_list.extend(files)
+                print(f'Load {len(files)} NPZ files of DU{du} from RUN{num_run}.')
+
+    else:
+        for num_run in run_list:
+            files = sorted(glob(os.path.join(result_dir, f'{name}', f'{name}_RUN{num_run}*.npz')))
+            file_list.extend(files)
+            print(f'Load {len(files)} NPZ files from RUN{num_run}.')
+
+    return file_list
+
+def get_npz_du(file):
+    basename = os.path.basename(file)
+    du = int(basename.split('_')[2][2:]) # all NPZ filenames have the same pattern
+
+    return du
+
+def get_npz_dus(file_list): 
+    du_set = set() # use set to store unique DUs
+
+    for file in file_list:
+        du = get_npz_du(file)
         du_set.add(du)
 
-    # convert the set to a list in order
     du_list = sorted(list(du_set))
+    print(f'NPZ files contain data from following DUs: \n{du_list}')
 
-    # print the list of all used DUs
-    print(f'\nNPZ files contain data from following DUs: \n{du_list}\n')
-
-    # return DUs
     return du_list
+
+def get_npz_cst(filename):
+    # assume that all NPZ filenames have the same pattern
+    cst_str  = os.path.basename(filename).split('.npz')[0].split('_')[-1]
+    cst      = datetime.strptime(cst_str, '%Y%m%d%H%M%S')
+    cst_flat = cst.strftime('%Y%m%d%H%M%S')
+    return cst, cst_flat
+
+def get_npz_dates(file_list): 
+    date_set = set() # use set to store unique dates
+
+    for file in file_list:
+        basename  = os.path.basename(file)
+        cst_str   = basename.split('.npz')[0].split('_')[-1] # all NPZ filenames have the same pattern
+        date_flat = cst_str[:8]
+        date_set.add(date_flat)
+    
+    date_list = sorted(list(date_set))
+    print(f'NPZ files contain data from following dates: \n{date_list}')
+
+    return date_list
 
 ###########################
 # GET TIME AND CONVERT IT #
 ###########################
 
-def get_root_DHtime(file):
+def get_root_cst(file):
     # assume that all ROOT filenames have the same pattern
-    DHtime_str  = os.path.basename(file).split('test.')[1].split('.')[0]
-    DHtime      = datetime.strptime(DHtime_str, '%Y%m%d%H%M%S')
-    DHtime_flat = DHtime.strftime('%Y%m%d%H%M%S')
-    return DHtime, DHtime_flat
+    cst_str  = os.path.basename(file).split('test.')[1].split('.')[0]
+    cst      = datetime.strptime(cst_str, '%Y%m%d%H%M%S')
+    cst_flat = cst.strftime('%Y%m%d%H%M%S')
+    return cst, cst_flat
 
-def get_root_dates(file_list):
+def get_roots_dates(file_list):
     # create an empty set to store unique dates
     date_set = set()
 
     for file in file_list:
-        date_time, datetime_flat = get_root_datetime(file)
-        date_set.add(datetime_flat[:8])
+        cst, cst_flat = get_root_cst(file)
+        date_set.add(cst_flat[:8])
 
     # convert the set to a list in order
     date_list = sorted(list(date_set))
 
     # print and return the dates
-    print(f'\nROOT files contain data from following dates: \n{date_list}\n')
+    print(f'ROOT files contain data from following dates: \n{date_list}')
     return date_list
 
-def get_npz_DHtime(filename):
-    # assume that all NPZ filenames have the same pattern
-    basename    = os.path.basename(filename)
-    DHtime_str  = basename.split('.npz')[0].split('_')[-1]
-    DHtime      = datetime.strptime(DHtime_str, '%Y%m%d%H%M%S')
-    DHtime_flat = DHtime.strftime('%Y%m%d%H%M%S')
-    return DHtime, DHtime_flat
+# get GPS time for 1 entry and convert it to CST
+def get1entry_cst(trawv):
+    gps_time = trawv.gps_time[0]
+    cst      = gps2utc1(gps_time) + timedelta(hours=8)
+    cst_flat = cst.strftime('%Y%m%d%H%M%S')
+    return cst, cst_flat
 
 # convert GPS time to UTC
 def gps2utc(gps_times):
@@ -234,8 +304,6 @@ def search_windows(trace,
                    filter='off',
                    standard_separation=standard_separation,
                    num_crossings=num_crossings,
-                   max_samples=max_samples,
-                   std_fluctuation=std_fluctuation,
                    sample_frequency=sample_frequency, 
                    cutoff_frequency=cutoff_frequency):
     # apply the high-pass filter if filter is set to 'on'
@@ -247,10 +315,6 @@ def search_windows(trace,
     # stop if there are no transients
     exceed_threshold = np.abs(trace) > threshold
     if np.sum(exceed_threshold) < num_crossings:
-        return []
-
-    # stop if this trace has an abnormal fluctuation of standard deviation
-    if np.std(trace) > (std_fluctuation * threshold / num_threshold):
         return []
     
     # find trace positions where threshold is exceeded
@@ -277,8 +341,8 @@ def search_windows(trace,
         stop_id = crossing_ids[pulse_ids[i+1]] + half_separation
         stop_id = min(len(trace)-1, stop_id) # fix the last pulse
 
-        # check if this time window contains enough crossings and does not exceed maximum number of samples
-        if np.sum(exceed_threshold[start_id:stop_id+1]) >= num_crossings and (stop_id - start_id + 1) <= max_samples:
+        # check if this time window contains enough crossings
+        if np.sum(exceed_threshold[start_id:stop_id+1]) >= num_crossings:
             window_list.append([start_id, stop_id])
 
     return window_list
@@ -288,7 +352,6 @@ def search_windows_test(trace,
                         filter_status='on',
                         standard_separation=standard_separation,
                         num_crossings=num_crossings,
-                        std_fluctuation=std_fluctuation,
                         sample_frequency=sample_frequency, 
                         cutoff_frequency=cutoff_frequency):
     # apply the high-pass filter if filter is set to 'on'
@@ -336,57 +399,13 @@ def search_windows_test(trace,
 
     return window_list
 
-def rough_search_windows(trace,
-                         threshold,
-                         filter='on',
-                         standard_separation=standard_separation,
-                         num_crossings=num_crossings,
-                         sample_frequency=sample_frequency, 
-                         cutoff_frequency=cutoff_frequency):
-    # apply the high-pass filter if filter is set to 'on'
-    if filter == 'on':
-        trace = high_pass_filter(trace=trace, 
-                                 sample_frequency=sample_frequency, 
-                                 cutoff_frequency=cutoff_frequency)
-
-    # stop if there are no transients
-    exceed_threshold = np.abs(trace) > threshold
-    if np.sum(exceed_threshold) < num_crossings:
-        return []
-    
-    # find trace positions where threshold is exceeded
-    crossing_ids = np.flatnonzero(exceed_threshold)
-    
-    # find the separations between consecutive threshold crossings
-    crossing_separations = np.diff(crossing_ids)
-
-    # locate pulse indices in threshold crossing indices
-    pulse_ids = np.flatnonzero(crossing_separations > standard_separation)
-    pulse_ids = np.concatenate(([-1], pulse_ids, [len(crossing_ids)-1]))
-    
-    # preallocate the return list for time windows
-    window_list = []
-
-    # search all transients/pulses
-    half_separation = standard_separation // 2
-    for i in range(len(pulse_ids)-1):
-        # get the start index of current pulse
-        start_id = crossing_ids[pulse_ids[i]+1] - half_separation
-        start_id = max(0, start_id) # fix the 1st pulse
-
-        # get the stop index of current pulse
-        stop_id = crossing_ids[pulse_ids[i+1]] + half_separation
-        stop_id = min(len(trace)-1, stop_id) # fix the last pulse
-
-        # check if this time window contains enough crossings
-        if np.sum(exceed_threshold[start_id:stop_id+1]) >= num_crossings:
-            window_list.append([start_id, stop_id])
-
-    return window_list
-
 ###############
 # COMPUTE PSD #
 ###############
+
+# compute RMS of a data list
+def rms(data_list):
+    return np.sqrt(np.mean(np.square(data_list)))
 
 # get PSD of 1 trace
 def get_psd(trace):
