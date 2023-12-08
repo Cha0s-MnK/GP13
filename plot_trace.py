@@ -6,7 +6,8 @@
 from config import *
 
 # create the save directory if it does not exist
-save_dir = os.path.join(plot_dir, f'{trace_wanted}-trace')
+name = f'{wanted}-trace'
+save_dir = os.path.join(plot_dir, name)
 os.makedirs(save_dir, exist_ok=True)
 
 ##################
@@ -15,16 +16,15 @@ os.makedirs(save_dir, exist_ok=True)
 
 # plot the traces and corresponding PSDs for 1 entry
 def plot1npz_trace(file):
-    # get information of this file
-    du                  = int(os.path.basename(file).split('_')[2][2:])
-    trace_wanted        = os.path.basename(file).split('-')[0]
-    DHtime, DHtime_flat = get_npz_DHtime(os.path.basename(file))
-    hour                = DHtime.hour
-    npz_file            = np.load(file, allow_pickle=True)
-    traces              = {channel: npz_file[f'traces{channel}'] for channel in channels}
-    filter_traces       = {channel: npz_file[f'filter_traces{channel}'] for channel in channels}
-    psds                = {channel: npz_file[f'psds{channel}'] for channel in channels}
-    filter_psds         = {channel: npz_file[f'filter_psds{channel}'] for channel in channels}
+    # get info from this file
+    du            = get_npz_du(file=file)
+    cst, cst_flat = get_npz_cst(file=file)
+    hour          = cst.hour
+    npz_file      = np.load(file, allow_pickle=True)
+    traces        = {channel: npz_file[f'traces{channel}'] for channel in channels}
+    filter_traces = {channel: npz_file[f'filter_traces{channel}'] for channel in channels}
+    psds          = {channel: npz_file[f'psds{channel}'] for channel in channels}
+    filter_psds   = {channel: npz_file[f'filter_psds{channel}'] for channel in channels}
 
     # adjust the figure size and create a GridSpec layout for the subplots
     fig = plt.figure(figsize=(60, 32), dpi=165)
@@ -65,10 +65,10 @@ def plot1npz_trace(file):
     # set common labels and title
     #fig.text(0.5, 0.0, 'Frequency / MHz', ha='center', fontsize=18)
     #fig.text(0.0, 0.5, 'Mean FFT / $V^2 MHz^{-1}$', va='center', rotation='vertical', fontsize=18)
-    fig.suptitle(f'Traces, Filtered Traces and Corresponding PSDs\nRUN{num_run}, DU{du}, Time = {DHtime}, Sample frequency = {sample_frequency} MHz, Cut-off Frequency = {cutoff_frequency} MHz', fontsize=20)
+    fig.suptitle(f'Traces, Filtered Traces and Corresponding PSDs\nRUN{nums_run}, DU{du}, Time = {cst}, Cut-off Frequency = {cutoff_frequency} MHz', fontsize=20)
 
     # save the figure as a PNG file
-    save_file = os.path.join(save_dir, f'{trace_wanted}-trace_RUN{num_run}_DU{du}_frequency{sample_frequency}_cutoff{cutoff_frequency}_{DHtime_flat}.png')
+    save_file = os.path.join(save_dir, f'{name}_RUN{nums_run}_DU{du}_cutoff{cutoff_frequency}_{cst_flat}.png')
     plt.savefig(save_file)
     print(f'Saved: {save_file}')
 
@@ -90,9 +90,9 @@ def subplot_trace(ax, channel, trace, du, filter_status):
     ax.axhline(y=threshold, color='red', linestyle='--', label=f'+/- threshold={threshold:.2f}')
     ax.axhline(y=-threshold, color='red', linestyle='--')
 
-    if trace_wanted == 'pulse' and filter_status == 'on':
+    if wanted == 'pulse' and filter_status == 'on':
         # highlight the transient/pulse windows
-        window_list = search_windows_test(trace=trace, num_threshold=num_threshold, filter_status='off')
+        window_list = search_windows(trace=trace, num_threshold=num_threshold, filter_status='off')
         for window_id, window in enumerate(window_list):
             start_id, stop_id = window
             start_time        = start_id * time_step
@@ -145,7 +145,7 @@ def subplot_psd(ax, channel, psd, hour):
 
     # set Y-scale and Y-limit
     ax.set_yscale('log')
-    ax.set_ylim(bottom=1e-14)
+    ax.set_ylim([1e-14, 1e-6])
 
     # set labels and title
     ax.set_xlabel('Frequency / MHz', fontsize=16)
@@ -228,18 +228,9 @@ def get_mean_psd(result_dir):
 # MAIN FUNCTION #
 #################
 
-# plot mean FFT PSDs for each DU
 def main():
-    # get NPZ files
-    print(f'\nLoad NPZ files from RUN{num_run}.\n')
-    file_list = sorted(glob(os.path.join(result_dir, f'{trace_wanted}-trace', f'{trace_wanted}-trace*RUN{num_run}*.npz')))
-    num_files = len(file_list)
+    file_list = get_npz_files(name=name)
 
-    # get used DUs
-    du_list = get_npz_dus(file_list=file_list)
-
-    # loop through listed files
-    print(f'\nLoop through {num_files} NPZ files from RUN{num_run}.\n')
     for file in file_list:
         plot1npz_trace(file)
 

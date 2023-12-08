@@ -28,7 +28,7 @@ du_styles = {
 }
 
 # adjust the figure size
-fig_length = 24
+fig_length = 20
 fig_width  = 12
 fig_dpi    = 165
 
@@ -148,8 +148,9 @@ def plot1day_psd_band(date, du_list):
             subplot1day_psd_band(ax=axes[channel_id], channel=channel, dataX=filter_time_list, dataZ=filter_psd_band_list)
 
         # add a color bar
-        cbar_ax = fig.add_axes([0.92, 0.15, 0.02, 0.7])
-        sm = plt.cm.ScalarMappable(cmap='RdYlBu', norm=LogNorm(vmin=1e-14, vmax=1e-6))
+        cbar_ax = fig.add_axes([0.95, 0.05, 0.02, 0.9]) # left, bottom, width, height, 
+        #sm = plt.cm.ScalarMappable(cmap='RdYlBu', norm=LogNorm(vmin=1e-14, vmax=1e-6))
+        sm = plt.cm.ScalarMappable(cmap='jet', norm=LogNorm(vmin=1e-14, vmax=1e-6))
         sm.set_array([])
         fig.colorbar(sm, cax=cbar_ax)
 
@@ -159,7 +160,7 @@ def plot1day_psd_band(date, du_list):
         fig.suptitle(f'DU{du} on {date}', fontsize=20)
 
         # adjust the layout: left, bottom, right, top
-        plt.tight_layout(rect=[0.02, 0.02, 0.99, 0.99])
+        plt.tight_layout(rect=[0.02, 0.02, 0.95, 0.99])
 
         # save as a PNG file
         save_file = os.path.join(save_dir, f'{wanted_trace}-psd-band_RUN{nums_run}_DU{du}_{date}.png')
@@ -172,8 +173,8 @@ def subplot1day_psd_band(ax, channel, dataX, dataZ):
     # plot the 2-D colour map
     gridX, gridY = np.meshgrid(dataX, dataY)
     gridZ        = dataZ.T
-    #colour_map2d = ax.pcolormesh(gridX, gridY, gridZ, shading='auto', norm=LogNorm(), cmap='jet')
-    colour_map2d = ax.pcolormesh(gridX, gridY, gridZ, shading='auto', norm=LogNorm(vmin=1e-14, vmax=1e-6), cmap='RdYlBu')
+    #colour_map2d = ax.pcolormesh(gridX, gridY, gridZ, shading='auto', norm=LogNorm(vmin=1e-14, vmax=1e-6), cmap='RdYlBu')
+    colour_map2d = ax.pcolormesh(gridX, gridY, gridZ, shading='auto', norm=LogNorm(vmin=1e-14, vmax=1e-6), cmap='jet')
 
     # set X-ticks
     ax.xaxis.set_major_locator(mdates.MinuteLocator(byminute=[0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55]))

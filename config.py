@@ -41,7 +41,6 @@ channel_mask        = np.array([False, True, True, True]) # mask channels to dis
 cutoff_frequency    = 50 # cut-off frequency of the high pass filter [MHz]
 linear_gain         = 10 # linear gain of the system
 num_crossings       = 6 # least number of threshold crossings in a time window
-num_run             = 92 # run number of GP13 data
 num_samples         = 2048 # number of samples in a trace
 num_threshold       = 4 # trigger threshold of the transient
 sample_frequency    = 500 # sampling frequency in each trace [MHz]
@@ -55,11 +54,10 @@ time_axis     = np.arange(num_samples) * time_step # time axis of a trace
 # RUNNING PARAMETERS #
 ######################
 
-run_list = [93, 94] # run numbers of GP13 data
+run_list = [104] # run numbers of GP13 data
 nums_run = '-'.join(str(num_run) for num_run in run_list)
 
-trace_wanted = 'all'
-wanted_trace = 'all'
+wanted = 'pulse'
 
 du_list = [1076, 1085]
 
@@ -88,15 +86,12 @@ plot_dir   = 'plot'
 num_sim = 16384
 
 # get_noise.py
-noise_data_dir   = f'data/RUN{num_run}'
-noise_result_dir = f'result/noise'
+#noise_data_dir   = f'data/RUN{num_run}'
+#noise_result_dir = f'result/noise'
 
 # load the noises
-with open(os.path.join(noise_result_dir, f'noise_RUN{num_run}.json'), 'r') as file:
-    noises = json.load(file)
-
-# search_transient.py
-search_data_dir     = f'data/RUN{num_run}'
+#with open(os.path.join(noise_result_dir, f'noise_RUN{num_run}.json'), 'r') as file:
+#    noises = json.load(file)
 
 # plot_rate.py
 rate_plot_files = 'result/search/*/*.npz'
@@ -113,22 +108,27 @@ galaxy_dir   = 'data/galaxy'
 galaxy_name  = ['VoutRMS2_NSgalaxy.npy', 'VoutRMS2_EWgalaxy.npy', 'VoutRMS2_Zgalaxy.npy']
 fft_plot_dir = 'plot/fft'
 
-###############################
-# GET DUS FROM ROOT/NPZ FILES #
-###############################
+######################
+# GET INFO FROM ROOT #
+######################
 
-# get ROOT files according to the given name
-def get_root_files(run_list=run_list, date='*'):
-    total_file_list = []
+def get_root_files(run_list=run_list, date_list=False):
+    file_list = []
 
-    # loop through run numbers
-    for num_run in run_list:
-        file_list = sorted(glob(os.path.join(data_dir, f'RUN{num_run}', f'*RUN{num_run}_test.{date}*.root')))
-        num_files = len(file_list)
-        print(f'Load {num_files} ROOT files from RUN{num_run}.')
-        total_file_list.extend(file_list)
+    if date_list:
+        for num_run in run_list: # 'run_list' is always required
+            for date in date_list:
+                files = sorted(glob(os.path.join(data_dir, f'RUN{num_run}', f'GP13_{date}*RUN{num_run}*.root')))
+                file_list.extend(files)
+                print(f'Load {len(files)} ROOT files on {date} from RUN{num_run}.')
 
-    return total_file_list
+    else:
+        for num_run in run_list:
+            files = sorted(glob(os.path.join(data_dir, f'RUN{num_run}', f'GP13*RUN{num_run}*.root')))
+            file_list.extend(files)
+            print(f'Load {len(files)} ROOT files from RUN{num_run}.')
+
+    return file_list
 
 def get_root_dus(file):
     # enable GRANDLIB
@@ -145,24 +145,40 @@ def get_root_dus(file):
     return du_list
 
 def get_roots_dus(file_list):
-    # enable GRANDLIB
     import grand.dataio.root_trees as rt
 
-    # create an empty set to store unique DUs
-    du_set = set()
+    du_set = set()  # use set to store unique DUs
 
-    # loop through all files to get used DUs
     for file in file_list:
         tadc = rt.TADC(file) # initiate TADC tree of this file
-        tadc.get_entry(0) # get the entry from this file
-        du_set.update(tadc.get_list_of_all_used_dus()) # update the set with all used DUs from this file
+        tadc.get_entry(0) # get the 1st entry from this file
+        du_set.update(tadc.get_list_of_all_used_dus()) # update the set
 
-    # convert the set to a list in order
     du_list = sorted(list(du_set))
-
-    # print and return used DUs
     print(f'ROOT files contain data from following DUs: \n{du_list}')
+
     return du_list
+
+def get_root_dates(file_list):
+    date_set = set() # use set to store unique dates
+
+    for file in file_list:
+        basename = os.path.basename(file)
+        cst_str   = basename.split('.root')[0].split('_')[1] # all ROOT filenames have the same pattern
+        date_flat = cst_str[:8]
+        date_set.add(date_flat)
+
+    date_list = sorted(list(date_set))
+    print(f'ROOT files contain data from following dates (UTC): \n{date_list}')
+
+    return date_list
+
+# get GPS time for 1 entry and convert it to CST
+def get1entry_cst(trawv):
+    gps_time = trawv.gps_time[0]
+    cst      = gps2utc1(gps_time) + timedelta(hours=8)
+    cst_flat = cst.strftime('%Y%m%d%H%M%S')
+    return cst, cst_flat
 
 #####################
 # GET INFO FROM NPZ #
@@ -219,11 +235,10 @@ def get_npz_dus(file_list):
 
     return du_list
 
-def get_npz_cst(filename):
-    # assume that all NPZ filenames have the same pattern
-    cst_str  = os.path.basename(filename).split('.npz')[0].split('_')[-1]
-    cst      = datetime.strptime(cst_str, '%Y%m%d%H%M%S')
-    cst_flat = cst.strftime('%Y%m%d%H%M%S')
+def get_npz_cst(file):
+    basename = os.path.basename(file)
+    cst_flat = basename.split('.npz')[0].split('_')[-1] # all NPZ filenames have the same pattern
+    cst      = datetime.strptime(cst_flat, '%Y%m%d%H%M%S')
     return cst, cst_flat
 
 def get_npz_dates(file_list): 
@@ -231,8 +246,8 @@ def get_npz_dates(file_list):
 
     for file in file_list:
         basename  = os.path.basename(file)
-        cst_str   = basename.split('.npz')[0].split('_')[-1] # all NPZ filenames have the same pattern
-        date_flat = cst_str[:8]
+        cst_flat  = basename.split('.npz')[0].split('_')[-1] # all NPZ filenames have the same pattern
+        date_flat = cst_flat[:8]
         date_set.add(date_flat)
     
     date_list = sorted(list(date_set))
@@ -243,35 +258,6 @@ def get_npz_dates(file_list):
 ###########################
 # GET TIME AND CONVERT IT #
 ###########################
-
-def get_root_cst(file):
-    # assume that all ROOT filenames have the same pattern
-    cst_str  = os.path.basename(file).split('test.')[1].split('.')[0]
-    cst      = datetime.strptime(cst_str, '%Y%m%d%H%M%S')
-    cst_flat = cst.strftime('%Y%m%d%H%M%S')
-    return cst, cst_flat
-
-def get_roots_dates(file_list):
-    # create an empty set to store unique dates
-    date_set = set()
-
-    for file in file_list:
-        cst, cst_flat = get_root_cst(file)
-        date_set.add(cst_flat[:8])
-
-    # convert the set to a list in order
-    date_list = sorted(list(date_set))
-
-    # print and return the dates
-    print(f'ROOT files contain data from following dates: \n{date_list}')
-    return date_list
-
-# get GPS time for 1 entry and convert it to CST
-def get1entry_cst(trawv):
-    gps_time = trawv.gps_time[0]
-    cst      = gps2utc1(gps_time) + timedelta(hours=8)
-    cst_flat = cst.strftime('%Y%m%d%H%M%S')
-    return cst, cst_flat
 
 # convert GPS time to UTC
 def gps2utc(gps_times):
@@ -299,7 +285,7 @@ def high_pass_filter(trace,
     b, a = butter(4, cutoff_frequency / Nyquist_frequency, btype='high', analog=False)
     return filtfilt(b, a, trace)
 
-def search_windows(trace,
+def search_windows_old(trace,
                    threshold,
                    filter='off',
                    standard_separation=standard_separation,
@@ -347,13 +333,13 @@ def search_windows(trace,
 
     return window_list
 
-def search_windows_test(trace,
-                        num_threshold=num_threshold,
-                        filter_status='on',
-                        standard_separation=standard_separation,
-                        num_crossings=num_crossings,
-                        sample_frequency=sample_frequency, 
-                        cutoff_frequency=cutoff_frequency):
+def search_windows(trace,
+                   num_threshold=num_threshold,
+                   filter_status='on',
+                   standard_separation=standard_separation,
+                   num_crossings=num_crossings,
+                   sample_frequency=sample_frequency, 
+                   cutoff_frequency=cutoff_frequency):
     # apply the high-pass filter if filter is set to 'on'
     if filter_status == 'on':
         trace = high_pass_filter(trace=trace, 
