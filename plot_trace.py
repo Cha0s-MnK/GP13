@@ -27,24 +27,24 @@ def plot1npz_trace(file):
     filter_psds   = {channel: npz_file[f'filter_psds{channel}'] for channel in channels}
 
     # adjust the figure size and create a GridSpec layout for the subplots
-    fig = plt.figure(figsize=(60, 32), dpi=165)
+    fig = plt.figure(figsize=(32, 45), dpi=165)
     gs  = gridspec(12, 2)
 
     # make dictionaries for easier indexing
     axes   = {}
     layout = {
-        '01': (0, 0, 1, 1),
-        '02': (1, 0, 3, 1),
-        '03': (4, 0, 1, 1),
-        '04': (5, 0, 3, 1),
-        '05': (8, 0, 1, 1),
-        '06': (9, 0, 3, 1),
-        '07': (0, 1, 1, 1),
-        '08': (1, 1, 3, 1),
-        '09': (4, 1, 1, 1),
-        '10': (5, 1, 3, 1),
-        '11': (8, 1, 1, 1),
-        '12': (9, 1, 3, 1),
+        '01': (0, 0, 1, 2),
+        '02': (2, 0, 2, 1),
+        '03': (1, 0, 1, 2),
+        '04': (2, 1, 2, 1),
+        '05': (4, 0, 1, 2),
+        '06': (6, 0, 2, 1),
+        '07': (5, 0, 1, 2),
+        '08': (6, 1, 2, 1),
+        '09': (8, 0, 1, 2),
+        '10': (10, 0, 2, 1),
+        '11': (9, 0, 1, 2),
+        '12': (10, 1, 2, 1),
     }
 
     # loop through the layout dictionary to create each subplot
@@ -53,11 +53,11 @@ def plot1npz_trace(file):
 
     # loop through 3 ADC channels to plot the traces, the filtered ones and corresponding PSDs
     for i, channel in enumerate(channels):
-        base_id = i * 2
+        base_id = i * 4
         subplot_trace(ax=axes[f'{base_id + 1:02}'], channel=channel, trace=traces[channel], du=du, filter_status='off')
-        subplot_psd(ax=axes[f'{base_id + 2:02}'], channel=channel, psd=psds[channel], hour=hour)
-        subplot_trace(ax=axes[f'{base_id + 7:02}'], channel=channel, trace=filter_traces[channel], du=du, filter_status='on')
-        subplot_psd(ax=axes[f'{base_id + 8:02}'], channel=channel, psd=filter_psds[channel], hour=hour)
+        subplot_psd(ax=axes[f'{base_id + 2:02}'], channel=channel, psd=psds[channel], hour=hour, filter_status='off')
+        subplot_trace(ax=axes[f'{base_id + 3:02}'], channel=channel, trace=filter_traces[channel], du=du, filter_status='on')
+        subplot_psd(ax=axes[f'{base_id + 4:02}'], channel=channel, psd=filter_psds[channel], hour=hour, filter_status='on')
 
     # adjust the layout: left, bottom, right, top
     plt.tight_layout(rect=[0.01, 0.01, 1, 0.96])
@@ -72,57 +72,48 @@ def plot1npz_trace(file):
     plt.savefig(save_file)
     print(f'Saved: {save_file}')
 
-    # close the figure to free up memory
     plt.close(fig)
 
 # plot 1 trace on 1 ax
 def subplot_trace(ax, channel, trace, du, filter_status):
     # plot the trace
-    ax.plot(time_axis, trace, color='blue', label=f'trace')
+    ax.plot(time_axis, trace, color='blue')
 
-    # add horizontal dashed lines at +/-STD of the trace
-    std = np.std(trace)
-    ax.axhline(y=std, color='orange', linestyle='--', label=f'+/- STD={std:.2f}')
-    ax.axhline(y=-std, color='orange', linestyle='--')
+    # add horizontal dashed lines at +/-thresholds of the trace
+    #threshold1 = num_threshold1*rms(trace)
+    #threshold2 = num_threshold2*rms(trace)
+    ax.axhline(y=threshold1, color='red', linestyle='--', label=f'+/-Threshold1={threshold1:.2f}')
+    ax.axhline(y=-threshold1, color='red', linestyle='--')
+    ax.axhline(y=threshold2, color='darkorange', linestyle='--', label=f'+/-Threshold2={threshold2:.2f}')
+    ax.axhline(y=-threshold2, color='darkorange', linestyle='--')
 
-    # add horizontal dashed lines at +/-threshold of the trace
-    threshold = num_threshold * std
-    ax.axhline(y=threshold, color='red', linestyle='--', label=f'+/- threshold={threshold:.2f}')
-    ax.axhline(y=-threshold, color='red', linestyle='--')
+    # highlight the transient/pulse windows
+    window_list = search_windows(trace=trace, filter_status='off')
+    for window_id, window in enumerate(window_list):
+        start_id, stop_id = window
+        start_time        = start_id * time_step
+        stop_time         = stop_id * time_step
+        ax.axvspan(start_time, stop_time, color='green', alpha=0.3)
 
-    if wanted == 'pulse' and filter_status == 'on':
-        # highlight the transient/pulse windows
-        window_list = search_windows(trace=trace, num_threshold=num_threshold, filter_status='off')
-        for window_id, window in enumerate(window_list):
-            start_id, stop_id = window
-            start_time        = start_id * time_step
-            stop_time         = stop_id * time_step
-            if window_id == 0:
-                ax.axvspan(start_time, stop_time, color='green', alpha=0.3, label='transient/pulse window(s)')
-            else:
-                ax.axvspan(start_time, stop_time, color='green', alpha=0.3)
-
-            # annotate time windows
-            centre_time = (start_time + stop_time) / 2
-            ylim = ax.get_ylim()
-            ax.text(centre_time, 1.02*ylim[1], f'[{start_time}, {stop_time}]', color='black', fontsize=14, ha='center', va='bottom')
+        # annotate time windows
+        centre_time = (start_time + stop_time) / 2
+        ylim = ax.get_ylim()
+        ax.text(centre_time, 1.02*ylim[1], f'[{start_time}, {stop_time}]', color='black', fontsize=14, ha='center', va='bottom')
 
     # set X-ticks
     ax.set_xlim([min(time_axis), max(time_axis)])
     ax.set_xticks(np.arange(min(time_axis), max(time_axis)+1, 200))
 
-    # set labels and title
+    # settings
     ax.set_xlabel('Time / ns', fontsize=16)
     ax.set_ylabel('ADC units', fontsize=16)
     ax.set_title(f'channel {channel} with filter {filter_status}', fontsize=18, pad=20)
-
-    # enable grid, legend and Y-ticks on both sides
     ax.grid(True)
-    ax.legend(frameon=True, loc='upper right', fontsize=14)
+    ax.legend(ncol=2, frameon=True, loc='upper right', fontsize=14)
     ax.tick_params(axis='y', labelleft=True, labelright=True)
 
 # plot 1 PSD on 1 ax
-def subplot_psd(ax, channel, psd, hour):
+def subplot_psd(ax, channel, psd, hour, filter_status):
     # plot the PSD
     ax.plot(fft_frequency, psd, label='PSD', color='red')
 
@@ -136,7 +127,7 @@ def subplot_psd(ax, channel, psd, hour):
     ax.semilogy(range(10, 250), galaxy_noise[0:240], color='orange', linestyle='-.', label='Galactic Noise')
 
     # add vertical lines at 30MHz and 50MHz
-    ax.axvline(x=30, color='purple', linestyle=':', linewidth=2, label='30 MHz')
+    #ax.axvline(x=30, color='purple', linestyle=':', linewidth=2, label='30 MHz')
     ax.axvline(x=50, color='green', linestyle=':', linewidth=2, label='50 MHz')
 
     # set X-ticks
@@ -147,13 +138,12 @@ def subplot_psd(ax, channel, psd, hour):
     ax.set_yscale('log')
     ax.set_ylim([1e-14, 1e-6])
 
-    # set labels and title
+    # settings
     ax.set_xlabel('Frequency / MHz', fontsize=16)
     ax.set_ylabel('PSD / $V^2 MHz^{-1}$', fontsize=16)
-
-    # enable grid, legend and Y-ticks on both sides
+    ax.set_title(f'channel {channel} with filter {filter_status}', fontsize=18, pad=10)
     ax.grid(True)
-    ax.legend(frameon=True, loc='upper right', fontsize=14)
+    ax.legend(ncol=1, frameon=True, loc='upper right', fontsize=14)
     ax.tick_params(axis='y', labelleft=True, labelright=True)
 
 def get_mean_psd(result_dir):

@@ -40,11 +40,8 @@ channel_mapping     = {'X': 0, 'Y': 1, 'Z': 2}
 channel_mask        = np.array([False, True, True, True]) # mask channels to disable channel 0 for GP13 data
 cutoff_frequency    = 50 # cut-off frequency of the high pass filter [MHz]
 linear_gain         = 10 # linear gain of the system
-num_crossings       = 6 # least number of threshold crossings in a time window
 num_samples         = 2048 # number of samples in a trace
-num_threshold       = 4 # trigger threshold of the transient
 sample_frequency    = 500 # sampling frequency in each trace [MHz]
-standard_separation = 24 # required separation between closest threshold crossings in two pulses [#sample]
 time_step           = 2 # time step of each sample [ns]
 
 fft_frequency = np.fft.rfftfreq(num_samples) * sample_frequency # frequencies of the FFT [MHz]
@@ -54,12 +51,20 @@ time_axis     = np.arange(num_samples) * time_step # time axis of a trace
 # RUNNING PARAMETERS #
 ######################
 
+num_threshold1   = 6
+num_threshold2   = 3
+threshold1       = False
+threshold2       = False
+num_crossing_min = 2+4 # minimum number of threshold crossings in a transient/pulse window
+num_crossing_max = 32 # maximum number of threshold crossings in a transient/pulse window
+num_interval     = 16
+
 run_list = [104] # run numbers of GP13 data
 nums_run = '-'.join(str(num_run) for num_run in run_list)
 
-wanted = 'pulse'
+wanted = 'pulse' # 'trivial' / 'pulse'
 
-du_list = [1076, 1085]
+du_list = [1010, 1013, 1017, 1019, 1020, 1021, 1029, 1032, 1035, 1041, 1085]
 
 # save directories
 data_dir   = 'data'
@@ -67,20 +72,20 @@ result_dir = 'result'
 plot_dir   = 'plot'
 
 # all/default dates
-# date_list_RUN92 = ['20231117', '20231118', '20231119', '20231120', '20231121', '20231122', '20231123', '20231124', '20231125', '20231126', '20231127', '20231128']
-# date_list_RUN93 = ['20231118', '20231119', '20231120', '20231121', '20231122', '20231123', '20231124', '20231125', '20231126', '20231127', '20231128']
-# date_list_RUN94 = ['20231121', '20231122', '20231123', '20231124', '20231125']
+# date_list_RUN92  = ['20231117', '20231118', '20231119', '20231120', '20231121', '20231122', '20231123', '20231124', '20231125', '20231126', '20231127', '20231128']
+# date_list_RUN93  = ['20231118', '20231119', '20231120', '20231121', '20231122', '20231123', '20231124', '20231125', '20231126', '20231127', '20231128']
+# date_list_RUN94  = ['20231121', '20231122', '20231123', '20231124', '20231125']
+# date_list_RUN104 = ['20231205', '20231206', '20231207']
 
 # all/default DUs
-# du_list_RUN92 = [1010, 1013, 1017, 1019, 1020, 1021, 1029, 1032, 1035, 1041]
-# du_list_RUN93 = [1076]
-# du_list_RUN94 = [1085]
+# du_list_RUN92  = [1010, 1013, 1017, 1019, 1020, 1021, 1029, 1032, 1035, 1041]
+# du_list_RUN93  = [1076]
+# du_list_RUN94  = [1085]
+# du_list_RUN104 = [1010, 1013, 1017, 1019, 1020, 1021, 1029, 1031, 1032, 1035, 1041, 1075, 1085]
 
 ########################################
 # DEFINE ARGUMENTS FOR SPECIFIC SCRIPT #
 ########################################
-
-# get_trace.py & plot_trace.py
 
 # random_noise.py
 num_sim = 16384
@@ -97,16 +102,9 @@ num_sim = 16384
 rate_plot_files = 'result/search/*/*.npz'
 rate_plot_dir   = 'plot/rate/'
 
-# plot mean FFTs for each DU
-fft_plot_dir = 'plot/fft/'
-
-# get_fft.py
-fft_result_dir  = 'result/fft'
-
 # plot_fft.py
 galaxy_dir   = 'data/galaxy'
 galaxy_name  = ['VoutRMS2_NSgalaxy.npy', 'VoutRMS2_EWgalaxy.npy', 'VoutRMS2_Zgalaxy.npy']
-fft_plot_dir = 'plot/fft'
 
 ######################
 # GET INFO FROM ROOT #
@@ -285,104 +283,61 @@ def high_pass_filter(trace,
     b, a = butter(4, cutoff_frequency / Nyquist_frequency, btype='high', analog=False)
     return filtfilt(b, a, trace)
 
-def search_windows_old(trace,
-                   threshold,
-                   filter='off',
-                   standard_separation=standard_separation,
-                   num_crossings=num_crossings,
-                   sample_frequency=sample_frequency, 
-                   cutoff_frequency=cutoff_frequency):
-    # apply the high-pass filter if filter is set to 'on'
-    if filter == 'on':
-        trace = high_pass_filter(trace=trace, 
-                                 sample_frequency=sample_frequency, 
-                                 cutoff_frequency=cutoff_frequency)
-
-    # stop if there are no transients
-    exceed_threshold = np.abs(trace) > threshold
-    if np.sum(exceed_threshold) < num_crossings:
-        return []
-    
-    # find trace positions where threshold is exceeded
-    crossing_ids = np.flatnonzero(exceed_threshold)
-    
-    # find the separations between consecutive threshold crossings
-    crossing_separations = np.diff(crossing_ids)
-
-    # locate pulse indices in threshold crossing indices
-    pulse_ids = np.flatnonzero(crossing_separations > standard_separation)
-    pulse_ids = np.concatenate(([-1], pulse_ids, [len(crossing_ids)-1]))
-    
-    # preallocate the return list for time windows
-    window_list = []
-
-    # search all transients/pulses
-    half_separation = standard_separation // 2
-    for i in range(len(pulse_ids)-1):
-        # get the start index of current pulse
-        start_id = crossing_ids[pulse_ids[i]+1] - half_separation
-        start_id = max(0, start_id) # fix the 1st pulse
-
-        # get the stop index of current pulse
-        stop_id = crossing_ids[pulse_ids[i+1]] + half_separation
-        stop_id = min(len(trace)-1, stop_id) # fix the last pulse
-
-        # check if this time window contains enough crossings
-        if np.sum(exceed_threshold[start_id:stop_id+1]) >= num_crossings:
-            window_list.append([start_id, stop_id])
-
-    return window_list
-
-def search_windows(trace,
-                   num_threshold=num_threshold,
-                   filter_status='on',
-                   standard_separation=standard_separation,
-                   num_crossings=num_crossings,
-                   sample_frequency=sample_frequency, 
-                   cutoff_frequency=cutoff_frequency):
-    # apply the high-pass filter if filter is set to 'on'
+def search_window(trace,
+                  filter_status='on',
+                  threshold1=threshold1,
+                  threshold2=threshold2,
+                  num_crossing_min=num_crossing_min,
+                  num_crossing_max=num_crossing_max,
+                  num_interval=num_interval,
+                  sample_frequency=sample_frequency,
+                  cutoff_frequency=cutoff_frequency):
     if filter_status == 'on':
         trace = high_pass_filter(trace=trace, 
                                  sample_frequency=sample_frequency, 
                                  cutoff_frequency=cutoff_frequency)
 
-    # stop if there are no transients
-    exceed_threshold = np.abs(trace) > num_threshold * np.std(trace)
-    if np.sum(exceed_threshold) < num_crossings:
-        return []
-
-    # stop if this trace is abnormal/noisy
-    if max(get_psd(trace)) > 1e-7:
+    if not threshold1:
+        threshold1 = num_threshold1 * rms(trace)
+    if not threshold2:
+        threshold2 = num_threshold2 * rms(trace)
+    
+    # stop if there are no transients/pulses
+    cross_threshold1 = np.abs(trace) > threshold1
+    cross_threshold2 = np.abs(trace) > threshold2
+    if np.sum(cross_threshold1) < 2 or np.sum(cross_threshold2) < num_crossing_min:
         return []
     
     # find trace positions where threshold is exceeded
-    crossing_ids = np.flatnonzero(exceed_threshold)
+    crossing_ids = np.flatnonzero(cross_threshold2)
     
     # find the separations between consecutive threshold crossings
     crossing_separations = np.diff(crossing_ids)
 
     # locate pulse indices in threshold crossing indices
-    pulse_ids = np.flatnonzero(crossing_separations > standard_separation)
+    pulse_ids = np.flatnonzero(crossing_separations > num_interval)
     pulse_ids = np.concatenate(([-1], pulse_ids, [len(crossing_ids)-1]))
-    
-    # preallocate the return list for time windows
+
     window_list = []
 
     # search all transients/pulses
-    half_separation = standard_separation // 2
     for i in range(len(pulse_ids)-1):
         # get the start index of current pulse
-        start_id = crossing_ids[pulse_ids[i]+1] - half_separation
+        start_id = crossing_ids[pulse_ids[i]+1] - num_interval
         start_id = max(0, start_id) # fix the 1st pulse
 
         # get the stop index of current pulse
-        stop_id = crossing_ids[pulse_ids[i+1]] + half_separation
+        stop_id = crossing_ids[pulse_ids[i+1]] + num_interval
         stop_id = min(len(trace)-1, stop_id) # fix the last pulse
 
-        # check if this time window contains enough crossings and does not exceed maximum number of samples
-        if np.sum(exceed_threshold[start_id:stop_id+1]) >= num_crossings:
-            window_list.append([start_id, stop_id])
 
+        if np.sum(cross_threshold2[start_id:stop_id+1]) >= num_crossing_min:
+            if np.sum(cross_threshold2[start_id:stop_id+1]) < num_crossing_max:
+                if np.sum(cross_threshold1[start_id:stop_id+1]) >= 2:
+                    trigger_id = start_id + np.flatnonzero(cross_threshold1[start_id:stop_id+1])[0]
+                    if np.sum(cross_threshold2[start_id:trigger_id+1]) <= 2:
+                        window_list.append([start_id, stop_id])
+        
     return window_list
 
 ###############
@@ -412,6 +367,45 @@ def get_psd(trace):
 
     return fft_psd
 
+def load1day_rms_psd(file_list, du_list, start_time, stop_time):
+    # make dictionaries for easier indexing and initiate them
+    rmses_list        = {du: {} for du in du_list}
+    psds_list         = {du: {} for du in du_list}
+    times_list        = {du: {} for du in du_list}
+    temperatures_list = {du: {} for du in du_list}
+    mean_psds         = {du: {} for du in du_list}
+    for du in du_list:
+        for channel in channels:
+            rmses_list[du][channel]        = []
+            psds_list[du][channel]         = []
+            times_list[du][channel]        = []
+            temperatures_list[du][channel] = []
+            mean_psds[du][channel]         = []
+
+    # get info from NPZ files
+    for file in file_list:
+        npz_file = np.load(file, allow_pickle=True)
+        du       = get_npz_du(file)
+        for channel in channels:
+            rmses_list[du][channel]        = npz_file[f'rmses_list{channel}']
+            psds_list[du][channel]         = npz_file[f'psds_list{channel}']
+            times_list[du][channel]        = npz_file[f'times_list{channel}']
+            temperatures_list[du][channel] = npz_file[f'temperatures_list{channel}']
+
+            mean_psds[du][channel]         = np.mean(np.array(psds_list[du][channel]), axis=0)
+
+    # use a mask to filter the data
+    for file in file_list:
+        for du in du_list:
+            for channel in channels:
+                time_mask                      = (times_list[du][channel] >= start_time) & (times_list[du][channel] < stop_time)
+                times_list[du][channel]        = times_list[du][channel][time_mask]
+                rmses_list[du][channel]        = rmses_list[du][channel][time_mask]
+                psds_list[du][channel]         = psds_list[du][channel][time_mask]
+                temperatures_list[du][channel] = temperatures_list[du][channel][time_mask]
+    
+    return times_list, rmses_list, psds_list, temperatures_list, mean_psds
+
 #######################
 # RECORD RUNNING TIME #
 #######################
@@ -424,4 +418,4 @@ def record_run_time():
     finally:
         end_time = wall_time.perf_counter()
         run_time = end_time - start_time
-        print(f"\nWhole program has been executed in: {run_time:.2f} seconds")
+        print(f"Whole program has been executed in {run_time:.2f} seconds.")

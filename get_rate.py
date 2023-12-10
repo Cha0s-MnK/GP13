@@ -9,7 +9,7 @@ import grand.dataio.root_trees as rt
 from config import *
 
 # create the save directory if it does not exist
-save_dir = os.path.join(result_dir, f'{trace_wanted}-rate')
+save_dir = os.path.join(result_dir, f'rate')
 os.makedirs(save_dir, exist_ok=True)
 
 ##################
@@ -22,16 +22,17 @@ def get1day_window(date):
 
     for num_run in run_list:
         file_list = get_root_files(run_list=[num_run], date_list=[date])
-
-        du_list = get_roots_dus(file_list=file_list)
+        du_list   = get_roots_dus(file_list=file_list)
 
         # make dictionaries for easier indexing and initiate them
+        windows_list        = {du: {} for du in du_list}
         filter_windows_list = {du: {} for du in du_list}
-        cst_list            = {}
+        csts_list           = {du: {} for du in du_list}
         for du in du_list:
             for channel in channels:
+                windows_list[du][channel]        = []
                 filter_windows_list[du][channel] = []
-            cst_list[du] = []
+                csts_list[du][channel]           = []
 
         for file_id, file in enumerate(file_list, 1):
             # get info from this ROOT file
@@ -44,25 +45,25 @@ def get1day_window(date):
                 # get info from this entry
                 tadc.get_entry(entry)
                 trawv.get_entry(entry)
-                du              = tadc.du_id[0] # 1 entry corresponds to only 1 DU
-                cst, cst_flat   = get1entry_cst(trawv=trawv)
-                temperature     = trawv.gps_temp[0]
-                traces          = np.array(tadc.trace_ch[0])[channel_mask]
+                du            = tadc.du_id[0] # 1 entry corresponds to only 1 DU
+                cst, cst_flat = get1entry_cst(trawv=trawv)
+                temperature   = trawv.gps_temp[0]
+                traces        = np.array(tadc.trace_ch[0])[channel_mask]
 
                 for channel_id, channel in enumerate(channels):
-                    filter_trace = high_pass_filter(traces[channel_id])
-
-                    filter_window_list = search_windows_test(trace=filter_trace, num_threshold=num_threshold, filter_status='off')
-                    
-                    filter_windows_list[du][channel].append(filter_window_list)
-                cst_list[du].append(cst)
+                    window        = search_window(trace=traces[channel_id], filter_status='off')
+                    filter_window = search_window(trace=traces[channel_id], filter_status='on')
+                    windows_list[du][channel].append(window)
+                    filter_windows_list[du][channel].append(filter_window)
+                    csts_list[du][channel].append(cst)
 
         # save as NPZ files
         for du in du_list:
-            save_file = os.path.join(save_dir, f'{trace_wanted}-rate_RUN{num_run}_DU{du}_threshold{num_threshold}_separation{standard_separation}_crossing{num_crossings}_cutoff{cutoff_frequency}_{date}.npz')
+            save_file = os.path.join(save_dir, f'rate_RUN{num_run}_DU{du}_T1st{num_threshold1}_T2nd{num_threshold2}_MIN{num_crossing_min}_MAX{num_crossing_max}_interval{num_interval}_cutoff{cutoff_frequency}_{date}.npz')
             np.savez(save_file,
+                     **{f'windows_list{channel}': windows_list[du][channel] for channel in channels},
                      **{f'filter_windows_list{channel}': filter_windows_list[du][channel] for channel in channels},
-                     **{f'cst_list{channel}': cst_list[du] for channel in channels})
+                     **{f'csts_list{channel}': csts_list[du][channel] for channel in channels})
             print(f'Saved: {save_file}')
 
 #################
@@ -70,7 +71,7 @@ def get1day_window(date):
 #################
 
 def main():
-    date_list = get_root_dates(file_list=get_root_files(date_list=False))
+    date_list = get_root_dates(file_list=get_root_files(date_list=['20231207']))
 
     for date in date_list:
         get1day_window(date=date)
